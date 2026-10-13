@@ -101,20 +101,44 @@ static void buttonsInit() {
   pinMode(HAL_BTN_PIN, INPUT);  // 外部 10k 上拉，不能用内部上拉
 }
 
-static void buttonsUpdate() {
-  const uint8_t raw = classifyButton(analogReadMilliVolts(HAL_BTN_PIN));
+// 按键诊断开关。置 1 后：每秒打印一次 ADC 实测电压，并在每次按键按下时打印键名。
+// 用于核对三键分压是否与 bsp_pins.h 的 BSP_BTN_MV_TABLE 一致 —— 实测 UP=3mV /
+// DOWN=307mV / OK=604mV / 松开=2918mV，与厂商参数吻合。生产构建请置 0。
+#define HAL_BTN_DEBUG 0
 
-  // 去抖：连续 3 次同一档位才认可。
+static void buttonsUpdate() {
+  const uint32_t mV = analogReadMilliVolts(HAL_BTN_PIN);
+  const uint8_t raw = classifyButton(mV);
+
+#if HAL_BTN_DEBUG
+  static uint32_t nextDbg = 0;
+  if (millis() - nextDbg > 1000) {
+    nextDbg = millis();
+    static const char* const kN[4] = {"UP", "DOWN", "OK", "松开"};
+    Serial.printf("[btn] ADC=%4umV 档位=%s\n", (unsigned)mV, kN[raw]);
+  }
+#endif
+
+  // 去抖：连续 2 次同一档位即认可。
+  // 原为 3 次，但对本板太快的主循环不适用：主循环要推 153.6KB 精灵图，
+  // 一帧约 30ms，3 次采样跨约 100ms，比一次轻触还长 —— 轻触会被整段丢掉
+  // （实测三个键各按一次，只注册到按得最久的那个）。2 次约 60ms，可接受。
   if (raw == s_candidate) {
-    if (s_candidateCount < 3) ++s_candidateCount;
+    if (s_candidateCount < 2) ++s_candidateCount;
   } else {
     s_candidate = raw;
     s_candidateCount = 1;
   }
-  if (s_candidateCount < 3) return;
+  if (s_candidateCount < 2) return;
 
   const uint8_t now = s_candidate;
   const uint32_t ms = millis();
+
+  // 诊断：档位变化时打印实测电压，便于核对分压分档是否与 bsp_pins.h 一致。
+  if (now != s_stable) {
+    static const char* const kDbgNames[4] = {"UP", "DOWN", "OK", "松开"};
+    Serial.printf("[btn] ADC=%umV -> %s\n", (unsigned)mV, kDbgNames[now]);
+  }
 
   for (uint8_t i = 0; i < 3; ++i) {
     const bool down = (now == i);
@@ -125,6 +149,10 @@ static void buttonsUpdate() {
       b.down = true;
       b.pressed = true;
       b.downSince = ms;
+#if HAL_BTN_DEBUG
+      static const char* const kNames[3] = {"UP", "DOWN", "OK"};
+      Serial.printf("[btn] %s 按下\n", kNames[i]);
+#endif
     } else if (!down && b.down) {
       b.down = false;
       b.released = true;
@@ -296,9 +324,9 @@ void HalM5::begin() {
   buttonsInit();
   i2cInit();
 
-  // 键位映射见 M5StickCPlus.h 的说明：OK -> BtnA，DOWN -> BtnB，UP -> 电源键等价物。
-  BtnA.attach(HAL_BTN_IDX_OK);
-  BtnB.attach(HAL_BTN_IDX_DOWN);
+  // 键位映射见 M5StickCPlus.h 的说明：DOWN -> BtnA（移动/下一页），OK -> BtnB（确认/执行）。
+  BtnA.attach(HAL_BTN_IDX_DOWN);
+  BtnB.attach(HAL_BTN_IDX_OK);
 
   Serial.printf("[hal] 显示就绪 %dx%d，背光 GPIO%d\n", HAL_LCD_W, HAL_LCD_H, HAL_BL_PIN);
   Serial.println("[hal] 按键就绪: GPIO0 ADC 三键分压 (UP/DOWN/OK)");

@@ -259,7 +259,7 @@ const int MENU_HINT_H  = 22;                      // 底部提示行高（原 14
 // Footer hint row inside a menu panel: "<downLbl> ↓  <rightLbl> →" with
 // pixel triangles. Panels add MENU_HINT_H to height and call this at bottom.
 static void drawMenuHints(const Palette& p, int mx, int mw, int hy,
-                          const char* downLbl = "A", const char* rightLbl = "B") {
+                          const char* downLbl = "DOWN", const char* rightLbl = "OK") {
   spr.drawFastHLine(mx + MENU_PAD, hy - 6, mw - 2 * MENU_PAD, p.textDim);
   spr.setTextColor(p.textDim, PANEL);
   int x = mx + MENU_PAD + 2;
@@ -589,17 +589,18 @@ void drawInfo() {
 
   } else if (infoPage == 1) {
     _infoHeader(p, y, "BUTTONS", infoPage);
-    spr.setTextColor(p.text, p.bg);    ln("A   front");
-    spr.setTextColor(p.textDim, p.bg); ln("    next screen");
-    ln("    approve prompt"); y += 4;
-    spr.setTextColor(p.text, p.bg);    ln("B   right side");
+    // 本板三键。原版的两键 A/B 与 Power 说明已不适用（本板无独立电源键，
+    // 电源键语义由 UP 承担，见 src/hal/M5StickCPlus.h 的键位映射说明）。
+    spr.setTextColor(p.text, p.bg);    ln("OK    centre");
     spr.setTextColor(p.textDim, p.bg); ln("    next page");
+    ln("    approve prompt"); y += 4;
+    spr.setTextColor(p.text, p.bg);    ln("DOWN  lower");
+    spr.setTextColor(p.textDim, p.bg); ln("    next screen");
     ln("    deny prompt"); y += 4;
-    spr.setTextColor(p.text, p.bg);    ln("hold A");
-    spr.setTextColor(p.textDim, p.bg); ln("    menu"); y += 4;
-    spr.setTextColor(p.text, p.bg);    ln("Power  left side");
-    spr.setTextColor(p.textDim, p.bg); ln("    tap = screen off");
-    ln("    hold 6s = off");
+    spr.setTextColor(p.text, p.bg);    ln("UP    upper");
+    spr.setTextColor(p.textDim, p.bg); ln("    tap = screen off"); y += 4;
+    spr.setTextColor(p.text, p.bg);    ln("hold DOWN");
+    spr.setTextColor(p.textDim, p.bg); ln("    menu");
 
   } else if (infoPage == 2) {
     _infoHeader(p, y, "CLAUDE", infoPage);
@@ -792,10 +793,10 @@ static void drawApproval() {
   } else {
     spr.setTextColor(GREEN, p.bg);
     spr.setCursor(4, H - 12);
-    spr.print("A: approve");
+    spr.print("OK: approve");
     spr.setTextColor(HOT, p.bg);
-    spr.setCursor(W - 48, H - 12);
-    spr.print("B: deny");
+    spr.setCursor(W - 66, H - 12);
+    spr.print("DOWN: deny");
   }
 }
 
@@ -898,8 +899,8 @@ static void drawPetHowTo(const Palette& p) {
   ln(p.textDim, "idle 30s = off");
   ln(p.textDim, "any button = wake"); gap();
 
-  ln(p.textDim, "A: screens  B: page");
-  ln(p.textDim, "hold A: menu");
+  ln(p.textDim, "DOWN: next screen");
+  ln(p.textDim, "hold DOWN: menu");
 }
 
 void drawPet() {
@@ -1132,14 +1133,13 @@ void loop() {
   if (M5.BtnA.wasReleased()) {
     if (!btnALong && !swallowBtnA) {
       if (inPrompt) {
+        // 键位对调后 BtnA 在本板是 DOWN 键，审批页承担「拒绝」。
         char cmd[96];
-        snprintf(cmd, sizeof(cmd), "{\"cmd\":\"permission\",\"id\":\"%s\",\"decision\":\"once\"}", tama.promptId);
+        snprintf(cmd, sizeof(cmd), "{\"cmd\":\"permission\",\"id\":\"%s\",\"decision\":\"deny\"}", tama.promptId);
         sendCmd(cmd);
         responseSent = true;
-        uint32_t tookS = (millis() - promptArrivedMs) / 1000;
-        statsOnApproval(tookS);
-        beep(2400, 60);
-        if (tookS < 5) triggerOneShot(P_HEART, 2000);
+        statsOnDenial();
+        beep(600, 60);
       } else if (resetOpen) {
         beep(1800, 30);
         resetSel = (resetSel + 1) % RESET_N;
@@ -1165,12 +1165,15 @@ void loop() {
     if (swallowBtnB) { swallowBtnB = false; }
     else
     if (inPrompt) {
+      // 键位对调后 BtnB 在本板是 OK 键，审批页承担「批准」。
       char cmd[96];
-      snprintf(cmd, sizeof(cmd), "{\"cmd\":\"permission\",\"id\":\"%s\",\"decision\":\"deny\"}", tama.promptId);
+      snprintf(cmd, sizeof(cmd), "{\"cmd\":\"permission\",\"id\":\"%s\",\"decision\":\"once\"}", tama.promptId);
       sendCmd(cmd);
       responseSent = true;
-      statsOnDenial();
-      beep(600, 60);
+      uint32_t tookS = (millis() - promptArrivedMs) / 1000;
+      statsOnApproval(tookS);
+      beep(2400, 60);
+      if (tookS < 5) triggerOneShot(P_HEART, 2000);
     } else if (resetOpen) {
       beep(2400, 30);
       applyReset(resetSel);

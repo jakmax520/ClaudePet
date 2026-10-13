@@ -56,6 +56,12 @@ static void rxPush(const uint8_t* p, size_t n) {
   }
 }
 
+// 配对码的注入由 NimBLE-Arduino 自己完成，无需在此另做：
+// NimBLEServer::handleGapEvent() 的 BLE_GAP_EVENT_PASSKEY_ACTION 分支会读
+// NimBLEDevice::getSecurityPasskey() 并调用 ble_sm_inject_io()，
+// 因此 onConnect 里 setSecurityPasskey() 设的值就是协议栈实际使用的值，
+// 与屏幕上显示的值天然一致。
+
 class RxCallbacks : public NimBLECharacteristicCallbacks {
   void onWrite(NimBLECharacteristic* c, NimBLEConnInfo&) override {
     NimBLEAttValue v = c->getValue();
@@ -69,9 +75,11 @@ class ServerCallbacks : public NimBLEServerCallbacks {
     connected = true;
 
     // 每次连接换一个新配对码。上游由协议栈生成并经 onPassKeyNotify 回调取得；
-    // NimBLE-Arduino 无此回调，故在此生成并写入协议栈（见文件头说明第 2 条）。
-    // 设备为 DisplayOnly，主机需输入此码。
-    uint32_t pk = esp_random() % 1000000u;
+    // NimBLE-Arduino 无该回调，改为本文件生成并经 setSecurityPasskey() 交给协议栈，
+    // 由库在配对时注入（见 NimBLEServer::handleGapEvent）。屏幕显示的就是这个值。
+    // 注意：值不能恰好是 123456 —— 库把该值当作"未设置"的哨兵，会转去问回调。
+    uint32_t pk;
+    do { pk = esp_random() % 1000000u; } while (pk == 123456u);
     NimBLEDevice::setSecurityPasskey(pk);
     passkey = pk;
 

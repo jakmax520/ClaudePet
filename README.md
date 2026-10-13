@@ -83,13 +83,26 @@
 
 ## 键位映射
 
-原版两个键 + 一个电源键，本板三个键。映射时保持原版交互语义不变：
+上游面向 M5StickC Plus **两键**设计，且两个键语义不对称：
+**BtnA = 移动/下一页**（菜单里移动选择、页面间切换、长按开菜单），
+**BtnB = 确认/执行**（菜单里执行选中项、翻页、审批拒绝）。
+
+若照搬为 `OK→BtnA`、`DOWN→BtnB`，会出现「OK 只是移动选择、DOWN 才是确认」
+的别扭手感。故按三键直觉重映射：
 
 | 本板按键 | 对应原版 | 作用 |
 | --- | --- | --- |
-| `OK` | BtnA | 确认 / 审批通过 / 长按开菜单 |
-| `DOWN` | BtnB | 滚动 / 审批拒绝 / 翻页 |
+| `DOWN` | BtnA | 移动选择 / 切换屏幕 / 长按开菜单 / 审批**拒绝** |
+| `OK` | BtnB | 确认执行 / 翻页 / 审批**批准** |
 | `UP` | 电源键短按 | 切换熄屏 |
+
+`main.cpp` 里 `BtnA`、`BtnB` 在审批页原本分别是「批准」与「拒绝」，对调后
+这两段分支已互换，否则会变成「OK 拒绝、DOWN 批准」。
+
+按键走 GPIO0 的 ADC 电阻分压，实测电压与厂商参数吻合
+（`UP`=3mV / `DOWN`=307mV / `OK`=604mV / 松开=2918mV，见 `bsp_pins.h` 的
+`BSP_BTN_MV_TABLE`）。去抖取连续 2 次采样 —— 主循环要推 153.6KB 精灵图、
+一帧约 30ms，原先的 3 次去抖跨约 100ms，比一次轻触还长，会整段丢掉。
 
 ## 构建与烧录
 
@@ -126,11 +139,21 @@ python tools/flash_character.py characters/bufo
 | Bluedroid + 阶段 A 的 135×240 | 91.8 KB |
 
 换成 NimBLE 后 `ble_bridge.cpp` 的对外接口（`ble_bridge.h`）未变，其余代码零改动。
-迁移中遇到的两个坑已记在该文件头部：NimBLE 无 `onPassKeyNotify`（改为自生成配对码
-经 `setSecurityPasskey()` 设定）、无 `setAccessPermissions`（改为创建特征时的
-`NIMBLE_PROPERTY` 标志），以及 `NimBLEAdvertising::setName()` 必须在
-`enableScanResponse(true)` 之后调用，否则名字会被塞进空间不足的广播包而丢失 ——
-丢了名字 Claude Desktop 的设备列表就过滤不到本机。
+迁移中遇到的三个坑已记在该文件注释里：
+
+1. NimBLE-Arduino 无 `onPassKeyNotify` 回调，拿不到协议栈生成的配对码。
+   解法是自生成六位码并经 `setSecurityPasskey()` 交给协议栈 ——
+   库在 `NimBLEServer::handleGapEvent()` 的 `BLE_GAP_EVENT_PASSKEY_ACTION`
+   分支里读回该值并调用 `ble_sm_inject_io()`，因此屏幕显示值与协议栈实际
+   使用值天然一致。**注意该值不能恰好是 `123456`**：库把它当作「未设置」的
+   哨兵，会转去问回调，故生成时需排除。
+2. NimBLE 2.x 无 `setAccessPermissions`，加密要求改由创建特征时的
+   `NIMBLE_PROPERTY` 标志表达。
+3. `NimBLEAdvertising::setName()` 必须在 `enableScanResponse(true)` 之后调用：
+   该方法先看扫描响应是否已启用，已启用才把名字放进去，否则塞进广播包 ——
+   而广播包已被 128 位服务 UUID 占去大半，装不下 `Claude-XXXX`，会静默失败。
+   实测丢了名字时广播里 `local_name` 为空，而 Claude Desktop 的设备列表按名字
+   前缀 `Claude` 过滤，就选不中设备。
 
 ## 菜单与面板排版
 
@@ -159,20 +182,34 @@ TFT_eSPI 的位图字体只能整数倍缩放，没有中间档：
 | 板级初始化：屏幕、背光、CW2017、三键 | 通过 |
 | 屏幕点亮、颜色正常、满屏无黑边 | 通过（目视） |
 | 宠物水平居中、垂直位置合理 | 通过（目视） |
-| 三键四项交互：长按 OK 菜单 / 短按 OK 切页 / DOWN 翻页 / UP 熄屏 | 通过 |
+| 三键 ADC 分压与去抖 | 通过（实测电压与厂商参数吻合） |
+| 三键交互：DOWN 移动/切屏/长按菜单、OK 确认/翻页、UP 熄屏 | 通过 |
 | LittleFS 挂载 + GIF 角色包加载与逐帧解码播放 | 通过 |
 | ≥5 个页面目视检查：Info、Pet 统计、菜单、settings、宠物页 | 通过 |
 | BLE 广播 `Claude-*` 且广播包含 NUS 服务 UUID（NimBLE 换栈后复测） | 通过 |
-| 与 Claude Desktop 配对、状态切换、审批流程 | **未验证** |
+| **六位配对码配对（LE Secure Connections + MITM + 绑定）** | **通过** |
+| **加密链路上 NUS 双向收发** | **通过** |
+| **审批：OK 批准 / DOWN 拒绝，同一 ID 重复按键只回传一次** | **通过** |
+| **CW2017 电量读数** | **通过**（上报 95% / 4154mV） |
+| 30 秒心跳超时清除审批 | 脚本执行完成，未目视确认屏幕 |
+| 真实 Claude Desktop 会话驱动的状态切换 | **未验证** |
 
-**未验证项的原因**：Claude Desktop 已在本机安装（winget，v2.19675.1），
-但其登录受地区限制无法完成，因此配对与审批链路未能实测。这不是代码问题 ——
-设备侧的广播、NUS 服务、屏幕与按键均已实测通过，未验证的只是与桌面端的交互。
+配对与协议收发是用本机自建工具验证的（`tools/` 之外，见下方说明），走的是与
+Claude Desktop 相同的 wire protocol 与安全要求，但**未经 Claude Desktop 本体验证** ——
+该软件已在本机安装（winget，v2.19675.1），登录受地区限制无法完成。
 
-要补上这项，需要一台能登录 Claude Desktop 的机器，开启开发者模式
+要补上这一项，需要一台能登录 Claude Desktop 的机器，开启开发者模式
 （**Help → Troubleshooting → Enable Developer Mode**）后：
 **Developer → Open Hardware Buddy… → Connect**，选择 `Claude-*`，
 把设备屏幕上显示的六位配对码输入系统配对框。
+
+### 验证过程的两个副产物
+
+1. Windows 侧配对脚本踩到一个 API 用法坑：`winrt` 的 Python 绑定把 WinRT 重载
+   方法拆成了带后缀的名字，`DevicePairingRequestedEventArgs.Accept(String pin)`
+   对应 `accept_with_pin(pin)`，而非 `accept(pin)` —— 后者是无参重载，
+   会抛 `TypeError: Invalid parameter count`，PIN 根本提交不出去。
+2. 上游的按键去抖（连续 3 次采样）在本板会漏掉轻触，原因见「键位映射」一节。
 
 ## 许可证
 
