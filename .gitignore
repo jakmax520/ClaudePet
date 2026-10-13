@@ -1,0 +1,22 @@
+# PlatformIO 构建产物
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# 由 tools/flash_character.py 从 characters/ 暂存生成，不入库
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.venv-*/
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+
+# 设备固件备份（体积大，且不属于本仓库产物）
+*.bin
+*.elf

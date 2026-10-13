@@ -1,0 +1,20 @@
+# FoloToy AI Passport -- 8MB flash partition table.
+#
+# NOTE: keep this file ASCII-only. PlatformIO parses it with the system locale
+# codec (GBK on a Chinese Windows), so UTF-8 comments here break the build with
+# UnicodeDecodeError. Explanations belong in the README, not in this file.
+#
+# The upstream claude-desktop-buddy targets M5StickC Plus (4MB) with no_ota.csv.
+# This board has 8MB, so the app partition is enlarged and the remainder goes to
+# LittleFS for character packs (upstream caps a pack at 1.8MB).
+#
+# The data partition is labelled "spiffs" on purpose: Arduino-ESP32's LittleFS
+# looks the partition up by that label by default (littlefs.begin() defaults to
+# partitionLabel="spiffs"), and the upstream character.cpp calls it without an
+# explicit label. Renaming the label breaks the mount at runtime.
+#
+# Name,     Type, SubType, Offset,   Size,     Flags
+nvs,        data, nvs,     0x9000,   0x6000,
+phy_init,   data, phy,     0xf000,   0x1000,
+factory,    app,  factory, 0x10000,  0x300000,
+spiffs,     data, spiffs,  0x310000, 0x4f0000,
