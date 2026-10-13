@@ -332,6 +332,46 @@ void HalM5::begin() {
   Serial.println("[hal] 按键就绪: GPIO0 ADC 三键分压 (UP/DOWN/OK)");
 }
 
+// ===========================================================================
+// 堆完整性校验
+// ===========================================================================
+// 背景：本项目在这块板上出现过非确定性的崩溃 —— 同样的代码改动，不同构建间
+// 时而复现时而不复现，崩溃现场是 ESP_RST_PANIC 且指针值是字符串内容。这更像
+// 堆被缓慢写坏，而不是某一行代码的确定性错误。
+//
+// heap_caps_check_integrity_all() 会走一遍堆的空闲链表并校验块头，
+// 能在【破坏发生的那一瞬间】报出来，而不是等它演变成崩溃（那时现场已经不可信）。
+// 每轮主循环调用一次：只走空闲链表、不遍历已分配块，开销很小。
+//
+// 增大 CONFIG_HEAP_POISONING 能进一步抓住 use-after-free 与越界写，
+// 但那是 sdkconfig 编译期选项，本项目的 Arduino 内核是预编译好的，改不了。
+static void heapGuard() {
+  static uint32_t nextReport = 0;
+  static bool     reported    = false;
+
+  if (!heap_caps_check_integrity_all(false)) {
+    if (!reported) {
+      reported = true;
+      Serial.println("[heap] !!! 完整性校验失败 —— 堆已被破坏");
+      Serial.printf("[heap] 此刻 free=%u largest=%u\n",
+                    (unsigned)ESP.getFreeHeap(),
+                    (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+      heap_caps_print_heap_info(MALLOC_CAP_DEFAULT);
+    }
+    return;
+  }
+
+  // 每 5 秒报一次余量：最大空闲块比总空闲量更能反映碎片化程度，
+  // 而碎片化正是「150KB 精灵图分配失败」那类问题的前兆。
+  if (millis() - nextReport > 5000) {
+    nextReport = millis();
+    Serial.printf("[heap] ok free=%u largest=%u\n",
+                  (unsigned)ESP.getFreeHeap(),
+                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+  }
+}
+
 void HalM5::update() {
   buttonsUpdate();
+  heapGuard();
 }

@@ -1,6 +1,7 @@
 #include "character.h"
 #include <M5StickCPlus.h>
 #include <LittleFS.h>
+#include <esp_system.h>
 #include <AnimatedGIF.h>
 #include <ArduinoJson.h>
 
@@ -9,6 +10,16 @@ extern TFT_eSprite spr;
 static const char* STATE_NAMES[] = {
   "sleep", "idle", "busy", "attention", "celebrate", "dizzy", "heart"
 };
+// ── 崩溃定位辅助 ──────────────────────────────────────────────────────────
+// 把"最后执行到哪一步"写进 RTC 内存：软复位（崩溃重启）后仍保留，
+// 启动时打印上一次的取值，即可定位崩溃点，无需依赖栈回溯。
+// 排查完可整体删除，不影响功能。
+RTC_DATA_ATTR static uint32_t g_dbgStage;
+RTC_DATA_ATTR static uint32_t g_dbgBoot;
+#define DBG_STAGE(n) do { g_dbgStage = (n); } while (0)
+uint32_t dbgStagePeek() { return g_dbgStage; }
+void     dbgStageSet(uint32_t n) { g_dbgStage = n; }
+
 static const uint8_t N_STATES = 7;
 
 // Text mode: manifest has "mode":"text", states contain {frames:[...],delay:N}.
@@ -141,6 +152,10 @@ static void gifDrawCb(GIFDRAW* d) {
 // --- Public -------------------------------------------------------------
 
 bool characterInit(const char* name) {
+  // 上次复位前停在哪个 stage —— 崩溃重启后由此定位崩溃点。
+  Serial.printf("[dbg] 上次停在 stage=%u (reset_reason=%d)\n",
+                (unsigned)g_dbgStage, (int)esp_reset_reason());
+  DBG_STAGE(1);
   if (!LittleFS.begin(false)) {
     // begin() fails if already mounted — that's fine on reload
     if (!LittleFS.open("/")) {
@@ -269,6 +284,7 @@ void characterRenderTo(TFT_eSPI* tgt, int cx, int cy) {
 }
 
 void characterSetPeek(bool peek) {
+  DBG_STAGE(30);
   if (peekMode == peek) return;
   peekMode = peek;
   characterInvalidate();
@@ -282,6 +298,7 @@ void characterClose() {
 }
 
 void characterInvalidate() {
+  DBG_STAGE(20);
   if (!loaded) return;
   if (textMode) {
     spr.fillSprite(pal.bg);
@@ -315,9 +332,12 @@ void characterSetState(uint8_t s) {
     return;
   }
 
+  DBG_STAGE(10);                                  // 进入 idx 计算
   uint8_t idx = stateStart[s] + stateRot[s];
+  DBG_STAGE(11);                                  // idx 计算完成
   char full[80];
   snprintf(full, sizeof(full), "%s/%s", basePath, gifPaths[idx]);
+  DBG_STAGE(12);                                  // 路径拼好
   if (gif.open(full, gifOpenCb, gifCloseCb, gifReadCb, gifSeekCb, gifDrawCb)) {
     gifOpen = true;
     gifW = gif.getCanvasWidth();

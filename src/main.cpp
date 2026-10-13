@@ -20,6 +20,11 @@ static void startBt() {
 
 #include "character.h"
 #include "stats.h"
+
+// 注：曾试过把循环任务栈从 8KB 提到 16KB，用于验证崩溃是否由栈溢出引起。
+// 结论是【无效】——崩溃依旧，而且多占的 8KB 堆把最大连续空闲块从
+// 13.3KB 压到 9.2KB（实测），反而加剧内存紧张，故已撤销。
+// 空闲时 uxTaskGetStackHighWaterMark 为 5984 字节，在 8KB 栈下是够的。
 // 阶段 B：逻辑画布改为与本板屏幕同尺寸（原版面向 M5StickC Plus 的 135x240）。
 const int W = 240, H = 320;
 const int CX = W / 2;
@@ -385,7 +390,23 @@ static void clockRefreshRtc() {
   M5.Rtc.GetDate(&_clkDt);
 }
 
+// 【本板限制】横屏时钟暂不启用，恒用竖屏。置 1 可恢复。
+//
+// 上游的横屏路径是按 240×135 画布写的，且宠物清除框沿用原版的
+// BUDDY_X_CENTER=67 假设（本板已改为 120）。而时钟页在上游还因 _onUsb
+// 条件恒不可达，等于从未被执行过；本项目让时钟可达后，横屏路径第一次
+// 真正运行，实测触发崩溃（Load access fault，MTVAL 为字符串内容，
+// 栈回溯落在 LittleFS 打开文件 + printf 这条链上）。
+//
+// 横屏是次要功能（需在设置里手动锁横屏），且难以稳定复现调试，故先关闭。
+// 恢复时除了置 1，还需按 320×240 重排 drawClock 的横屏分支与宠物清除框。
+#define ENABLE_LANDSCAPE_CLOCK 0
+
 static void clockUpdateOrient() {
+#if !ENABLE_LANDSCAPE_CLOCK
+  clockOrient = 0;
+  orientFrames = 0;
+#else
   float ax, ay, az;
   M5.Imu.getAccelData(&ax, &ay, &az);
   uint8_t lock = settings().clockRot;
@@ -422,6 +443,7 @@ static void clockUpdateOrient() {
     if (want != clockOrient) { if (++swapFrames >= 8) { clockOrient = want; swapFrames = 0; } }
     else swapFrames = 0;
   }
+#endif
 }
 
 // Clock face: shown when charging on USB with nothing else going on.
@@ -1208,7 +1230,9 @@ void loop() {
   bool clocking = displayMode == DISP_NORMAL
                && !menuOpen && !settingsOpen && !resetOpen && !inPrompt
                && tama.sessionsRunning == 0 && tama.sessionsWaiting == 0
-               && dataRtcValid() && _onUsb;
+  // 【诊断用】暂时去掉上游的 && _onUsb（本板无 VBUS 检知，该条件恒假，
+  // 时钟页会是死代码），配合 stage 标记定位崩溃点。
+               && dataRtcValid();
   if (clocking) clockUpdateOrient();
   else { clockOrient = 0; orientFrames = 0; paintedOrient = 0; }
   bool landscapeClock = clocking && clockOrient != 0;
@@ -1216,10 +1240,16 @@ void loop() {
   static bool wasClocking = false;
   static bool wasLandscape = false;
   if (clocking != wasClocking || landscapeClock != wasLandscape) {
+    extern uint32_t dbgStagePeek();
+    extern void dbgStageSet(uint32_t);
+    dbgStageSet(40);
     if (clocking && !landscapeClock) characterSetPeek(true);
     else applyDisplayMode();
+    dbgStageSet(41);
     characterInvalidate();
+    dbgStageSet(42);
     if (buddyMode) buddyInvalidate();
+    dbgStageSet(43);
     wasClocking = clocking;
     wasLandscape = landscapeClock;
   }
