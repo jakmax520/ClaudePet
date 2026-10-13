@@ -9,9 +9,11 @@ extern TFT_eSprite spr;
 enum { B_SLEEP, B_IDLE, B_BUSY, B_ATTENTION, B_CELEBRATE, B_DIZZY, B_HEART };
 
 // ──────────────── shared geometry ────────────────
-const int BUDDY_X_CENTER = 67;
-const int BUDDY_CANVAS_W = 135;
-const int BUDDY_Y_BASE   = 30;
+// 阶段 B：画布由 135x240 改为 240x320。
+// 这三个常量被 18 个宠物文件引用约 250 次，改值即可整体重排，宠物代码零改动。
+const int BUDDY_X_CENTER = 120;   // 原 67（135 宽的中心）→ 240 宽的中心
+const int BUDDY_CANVAS_W = 240;   // 原 135
+const int BUDDY_Y_BASE   = 70;    // 原 30，整体下移以在新的 320 高画布上居中偏上
 const int BUDDY_Y_OVERLAY = 6;
 const int BUDDY_CHAR_W   = 6;
 const int BUDDY_CHAR_H   = 8;

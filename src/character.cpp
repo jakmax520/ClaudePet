@@ -40,7 +40,9 @@ static int         gifX = 0, gifY = 0, gifW = 0, gifH = 0;
 // Peek mode pins the GIF bottom to the info-panel top (y=70) so the pet
 // sits on the panel edge regardless of canvas height. Home mode centers
 // in the upper 140px. No padding assumed in the source art.
-static const int   PEEK_TOP = 70;
+// 阶段 B：画布由 135x240 改为 240x320，宠物区整体下移 40（与 buddy.cpp 的
+// BUDDY_Y_BASE 30→70 同步），否则缩略条会贴在屏幕最上沿。
+static const int   PEEK_TOP = 110;
 static bool        peekMode = false;
 // Draw target — defaults to the sprite; characterRenderTo() retargets to
 // M5.Lcd for the landscape clock (both inherit TFT_eSPI).
@@ -51,7 +53,8 @@ static void gifPlace() {
   int outW = peekMode ? gifW / 2 : gifW;
   int outH = peekMode ? gifH / 2 : gifH;
   gifX = (spr.width() - outW) / 2;
-  gifY = peekMode ? (PEEK_TOP - outH) / 2 : (140 - outH) / 2;
+  // 全尺寸宠物区原为 0..140，随画布加高同步下移到 0..180。
+  gifY = peekMode ? (PEEK_TOP - outH) / 2 : (180 - outH) / 2;
 }
 static uint32_t    nextFrameAt = 0;
 static uint32_t    animPauseUntil = 0;

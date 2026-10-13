@@ -20,7 +20,8 @@ static void startBt() {
 
 #include "character.h"
 #include "stats.h"
-const int W = 135, H = 240;
+// 阶段 B：逻辑画布改为与本板屏幕同尺寸（原版面向 M5StickC Plus 的 135x240）。
+const int W = 240, H = 320;
 const int CX = W / 2;
 const int CY_BASE = 120;
 // 原版 M5StickC Plus 在 GPIO10 上有颗红色 LED，审批时闪烁提示（active-low）。
@@ -28,11 +29,10 @@ const int CY_BASE = 120;
 // 且本板无用户可控 LED，故停用该提示。Settings 里的 LED 开关仍可切换，只是无效果。
 const int LED_PIN = -1;
 
-// 本板屏幕 240x320，而原版逻辑画布是 135x240。第一阶段保持画布尺寸与全部
-// 坐标不变，把画布居中贴到屏幕上、四周留黑边 —— 这样上层 UI 与宠物布局
-// 与原版逐像素一致。满屏重排（240x320）留作后续单独一项。
-const int CANVAS_X = (240 - W) / 2;   // 52
-const int CANVAS_Y = (320 - H) / 2;   // 40
+// 画布已与屏幕同尺寸，不再需要居中偏移。
+// （阶段 A 时此处为 (240-W)/2 / (320-H)/2，用于把 135x240 画布居中并留黑边。）
+const int CANVAS_X = 0;
+const int CANVAS_Y = 0;
 
 // Colors used across multiple UI surfaces
 const uint16_t HOT   = 0xFA20;   // red-orange: warnings, impatience, deny
@@ -239,40 +239,55 @@ static void applyReset(uint8_t idx) {
   ESP.restart();
 }
 
+// ── 菜单/面板排版 ─────────────────────────────────────────────────────────
+// 原版面向 135x240：size 1 字体（6x8px）、面板宽 118、行距 14。
+//
+// 关于字号：TFT_eSPI 的位图字体只能整数倍缩放，没有中间档。
+//   size 1 → 面板宽下限约 114px（占屏宽 48%），偏小
+//   size 2 → 面板宽下限约 220px（占屏宽 92%），几乎铺满整屏
+// 两档都试过了，取 size 1；靠加宽面板 + 拉大行距/内边距获得舒展观感。
+// 宽度下限由最长条目决定：设置页 "> brightness"（12 字符）+ 取值 "19/19"（5 字符）。
+const int MENU_TSIZE   = 1;                       // 字号（原 1）
+const int MENU_GLYPH_W = 6 * MENU_TSIZE;          // 单字符宽 = 6
+const int MENU_ROW_H   = 16;                      // 行距（原 14）
+const int MENU_PAD     = 8;                       // 左右内边距（原 6）
+const int MENU_TOP_PAD = 12;                      // 顶部内边距（原 8）
+const int MENU_W       = 150;                     // 面板宽（原 118）
+const int MENU_VAL_W   = 44;                      // 取值列宽（原 36）
+const int MENU_HINT_H  = 22;                      // 底部提示行高（原 14）
+
 // Footer hint row inside a menu panel: "<downLbl> ↓  <rightLbl> →" with
 // pixel triangles. Panels add MENU_HINT_H to height and call this at bottom.
-const int MENU_HINT_H = 14;
 static void drawMenuHints(const Palette& p, int mx, int mw, int hy,
                           const char* downLbl = "A", const char* rightLbl = "B") {
-  spr.drawFastHLine(mx + 6, hy - 4, mw - 12, p.textDim);
+  spr.drawFastHLine(mx + MENU_PAD, hy - 6, mw - 2 * MENU_PAD, p.textDim);
   spr.setTextColor(p.textDim, PANEL);
-  // 6px/glyph at size 1; triangle goes 4px after the label ends
-  int x = mx + 8;
+  int x = mx + MENU_PAD + 2;
   spr.setCursor(x, hy); spr.print(downLbl);
-  x += strlen(downLbl) * 6 + 4;
-  spr.fillTriangle(x, hy + 1, x + 6, hy + 1, x + 3, hy + 6, p.textDim);
-  x = mx + mw / 2 + 4;
+  x += strlen(downLbl) * MENU_GLYPH_W + 6;
+  spr.fillTriangle(x, hy + 2, x + 8, hy + 2, x + 4, hy + 9, p.textDim);
+  x = mx + mw / 2 + 6;
   spr.setCursor(x, hy); spr.print(rightLbl);
-  x += strlen(rightLbl) * 6 + 4;
-  spr.fillTriangle(x, hy, x, hy + 6, x + 5, hy + 3, p.textDim);
+  x += strlen(rightLbl) * MENU_GLYPH_W + 6;
+  spr.fillTriangle(x, hy, x, hy + 7, x + 7, hy + 3, p.textDim);
 }
 
 static void drawSettings() {
   const Palette& p = characterPalette();
-  int mw = 118, mh = 16 + SETTINGS_N * 14 + MENU_HINT_H;
+  int mw = MENU_W, mh = MENU_TOP_PAD + SETTINGS_N * MENU_ROW_H + MENU_HINT_H;
   int mx = (W - mw) / 2, my = (H - mh) / 2;
-  spr.fillRoundRect(mx, my, mw, mh, 4, PANEL);
-  spr.drawRoundRect(mx, my, mw, mh, 4, p.textDim);
-  spr.setTextSize(1);
+  spr.fillRoundRect(mx, my, mw, mh, 6, PANEL);
+  spr.drawRoundRect(mx, my, mw, mh, 6, p.textDim);
+  spr.setTextSize(MENU_TSIZE);
   Settings& s = settings();
   bool vals[] = { s.sound, s.bt, s.wifi, s.led, s.hud };
   for (int i = 0; i < SETTINGS_N; i++) {
     bool sel = (i == settingsSel);
     spr.setTextColor(sel ? p.text : p.textDim, PANEL);
-    spr.setCursor(mx + 6, my + 8 + i * 14);
+    spr.setCursor(mx + MENU_PAD, my + MENU_TOP_PAD + i * MENU_ROW_H);
     spr.print(sel ? "> " : "  ");
     spr.print(settingsItems[i]);
-    spr.setCursor(mx + mw - 36, my + 8 + i * 14);
+    spr.setCursor(mx + mw - MENU_VAL_W, my + MENU_TOP_PAD + i * MENU_ROW_H);
     spr.setTextColor(p.textDim, PANEL);
     if (i == 0) {
       spr.printf("%u/4", brightLevel);
@@ -288,27 +303,27 @@ static void drawSettings() {
       spr.printf("%u/%u", pos, total);
     }
   }
-  drawMenuHints(p, mx, mw, my + mh - 12, "Next", "Change");
+  drawMenuHints(p, mx, mw, my + mh - 14, "Next", "Change");
 }
 
 static void drawReset() {
   const Palette& p = characterPalette();
-  int mw = 118, mh = 16 + RESET_N * 14 + MENU_HINT_H;
+  int mw = MENU_W, mh = MENU_TOP_PAD + RESET_N * MENU_ROW_H + MENU_HINT_H;
   int mx = (W - mw) / 2, my = (H - mh) / 2;
-  spr.fillRoundRect(mx, my, mw, mh, 4, PANEL);
-  spr.drawRoundRect(mx, my, mw, mh, 4, HOT);
-  spr.setTextSize(1);
+  spr.fillRoundRect(mx, my, mw, mh, 6, PANEL);
+  spr.drawRoundRect(mx, my, mw, mh, 6, HOT);
+  spr.setTextSize(MENU_TSIZE);
   for (int i = 0; i < RESET_N; i++) {
     bool sel = (i == resetSel);
     spr.setTextColor(sel ? p.text : p.textDim, PANEL);
-    spr.setCursor(mx + 6, my + 8 + i * 14);
+    spr.setCursor(mx + MENU_PAD, my + MENU_TOP_PAD + i * MENU_ROW_H);
     spr.print(sel ? "> " : "  ");
     bool armed = (i == resetConfirmIdx) &&
                  (int32_t)(millis() - resetConfirmUntil) < 0;
     if (armed) spr.setTextColor(HOT, PANEL);
     spr.print(armed ? "really?" : resetItems[i]);
   }
-  drawMenuHints(p, mx, mw, my + mh - 12);
+  drawMenuHints(p, mx, mw, my + mh - 14);
 }
 
 void menuConfirm() {
@@ -330,20 +345,20 @@ void menuConfirm() {
 
 void drawMenu() {
   const Palette& p = characterPalette();
-  int mw = 118, mh = 16 + MENU_N * 14 + MENU_HINT_H;
+  int mw = MENU_W, mh = MENU_TOP_PAD + MENU_N * MENU_ROW_H + MENU_HINT_H;
   int mx = (W - mw) / 2, my = (H - mh) / 2;
-  spr.fillRoundRect(mx, my, mw, mh, 4, PANEL);
-  spr.drawRoundRect(mx, my, mw, mh, 4, p.textDim);
-  spr.setTextSize(1);
+  spr.fillRoundRect(mx, my, mw, mh, 6, PANEL);
+  spr.drawRoundRect(mx, my, mw, mh, 6, p.textDim);
+  spr.setTextSize(MENU_TSIZE);
   for (int i = 0; i < MENU_N; i++) {
     bool sel = (i == menuSel);
     spr.setTextColor(sel ? p.text : p.textDim, PANEL);
-    spr.setCursor(mx + 6, my + 8 + i * 14);
+    spr.setCursor(mx + MENU_PAD, my + MENU_TOP_PAD + i * MENU_ROW_H);
     spr.print(sel ? "> " : "  ");
     spr.print(menuItems[i]);
     if (i == 4) spr.print(dataDemo() ? "  on" : "  off");
   }
-  drawMenuHints(p, mx, mw, my + mh - 12);
+  drawMenuHints(p, mx, mw, my + mh - 14);
 }
 
 // Clock orientation: gravity along the in-plane X axis means the stick is
@@ -429,11 +444,12 @@ static void drawClock() {
     paintedOrient = 0;
     // Bottom half — buddy naturally lives at y=0..82, GIF peeks at top
     // via peek mode. Clearing from 90 leaves both untouched.
-    spr.fillRect(0, 90, W, H - 90, p.bg);
+    // 竖屏时钟：原版这些 y 是按 240 高排的，320 高需要整体下移 40 保持居中。
+    spr.fillRect(0, 130, W, H - 130, p.bg);
     spr.setTextDatum(MC_DATUM);
-    spr.setTextSize(4); spr.setTextColor(p.text, p.bg);    spr.drawString(hm, CX, 140);
-    spr.setTextSize(2); spr.setTextColor(p.textDim, p.bg); spr.drawString(ss, CX, 175);
-    spr.setTextSize(1);                                     spr.drawString(dl, CX, 200);
+    spr.setTextSize(4); spr.setTextColor(p.text, p.bg);    spr.drawString(hm, CX, 180);
+    spr.setTextSize(2); spr.setTextColor(p.textDim, p.bg); spr.drawString(ss, CX, 215);
+    spr.setTextSize(1);                                     spr.drawString(dl, CX, 240);
     spr.setTextDatum(TL_DATUM);
     return;
   }
@@ -529,18 +545,20 @@ void drawPasskey() {
   spr.fillSprite(p.bg);
   spr.setTextSize(1);
   spr.setTextColor(p.textDim, p.bg);
-  spr.setCursor(8, 56);  spr.print("BLUETOOTH PAIRING");
-  spr.setCursor(8, 184); spr.print("enter on desktop:");
+  spr.setCursor(8, 96);  spr.print("BLUETOOTH PAIRING");
+  spr.setCursor(8, 224); spr.print("enter on desktop:");
   spr.setTextSize(3);
   spr.setTextColor(p.text, p.bg);
   char b[8]; snprintf(b, sizeof(b), "%06lu", (unsigned long)blePasskey());
-  spr.setCursor((W - 18 * 6) / 2, 110);
+  spr.setCursor((W - 18 * 6) / 2, 150);
   spr.print(b);
 }
 
 void drawInfo() {
   const Palette& p = characterPalette();
-  const int TOP = 70;
+  // 内容起始线。原版为 70（= 宠物缩略条高度），画布由 240 加高到 320 后
+  // 随宠物区一起下移 40，与 character.cpp 的 PEEK_TOP 保持一致。
+  const int TOP = 110;
   spr.fillRect(0, TOP, W, H - TOP, p.bg);
   spr.setTextSize(1);
   int y = TOP + 2;
@@ -699,7 +717,12 @@ void drawInfo() {
 
 // Greedy word-wrap into fixed-width rows. Continuation rows get a leading
 // space. Returns number of rows written.
-static uint8_t wrapInto(const char* in, char out[][24], uint8_t maxRows, uint8_t width) {
+// 转写行缓冲的每行字符容量。原版按 135px 宽换行 21 字符、缓冲取 24；
+// 阶段 B 画布加宽到 240px，换行 38 字符，缓冲相应取 40。
+// 用具名常量避免行宽在多处各写一个数字（先前 wrapInto 的参数里就写死了 24）。
+static const int MSG_COLS = 40;
+
+static uint8_t wrapInto(const char* in, char out[][MSG_COLS], uint8_t maxRows, uint8_t width) {
   uint8_t row = 0, col = 0;
   const char* p = in;
   while (*p && row < maxRows) {
@@ -790,7 +813,9 @@ static void tinyHeart(int x, int y, bool filled, uint16_t col) {
 }
 
 static void drawPetStats(const Palette& p) {
-  const int TOP = 70;
+  // 内容起始线。原版为 70（= 宠物缩略条高度），画布由 240 加高到 320 后
+  // 随宠物区一起下移 40，与 character.cpp 的 PEEK_TOP 保持一致。
+  const int TOP = 110;
   spr.fillRect(0, TOP, W, H - TOP, p.bg);
   spr.setTextSize(1);
   int y = TOP + 16;
@@ -845,7 +870,9 @@ static void drawPetStats(const Palette& p) {
 }
 
 static void drawPetHowTo(const Palette& p) {
-  const int TOP = 70;
+  // 内容起始线。原版为 70（= 宠物缩略条高度），画布由 240 加高到 320 后
+  // 随宠物区一起下移 40，与 character.cpp 的 PEEK_TOP 保持一致。
+  const int TOP = 110;
   spr.fillRect(0, TOP, W, H - TOP, p.bg);
   spr.setTextSize(1);
   int y = TOP + 2;
@@ -899,7 +926,8 @@ void drawPet() {
 void drawHUD() {
   if (tama.promptId[0]) { drawApproval(); return; }
   const Palette& p = characterPalette();
-  const int SHOW = 3, LH = 8, WIDTH = 21;
+  // WIDTH 是换行字符数（6px/字符），留 2 列余量给行缓冲。
+  const int SHOW = 3, LH = 8, WIDTH = MSG_COLS - 2;
   const int AREA = SHOW * LH + 4;
   spr.fillRect(0, H - AREA, W, AREA, p.bg);
   spr.setTextSize(1);
@@ -915,7 +943,7 @@ void drawHUD() {
 
   // Wrap all transcript lines into a flat display buffer. Track which
   // transcript index each display row came from, so we can dim older ones.
-  static char disp[32][24];
+  static char disp[32][MSG_COLS];
   static uint8_t srcOf[32];
   uint8_t nDisp = 0;
   for (uint8_t i = 0; i < tama.nLines && nDisp < 32; i++) {
@@ -947,6 +975,21 @@ void drawHUD() {
 void setup() {
   M5.begin();
   M5.Lcd.setRotation(0);
+
+  // 满屏精灵图（240x320x2 = 150KB）是本板最吃内存的一项，必须在任何会
+  // 切碎堆的子系统之前分配：实测先起 BLE 再申请 150KB 会因连续块不足而失败，
+  // 而彼时空闲堆仍有 160KB。放在这里申请到的是一整块未切分的堆。
+  {
+    // 16 位满屏精灵图要 153.6KB，本板无 PSRAM，分配后仅剩约 2.9KB 空闲堆 ——
+    // 不足以容纳协议行（单行上限 4KB）与 JSON 解析。改用 8 位色深减半到 76.8KB。
+    // 代价是颜色经 RGB332 量化（每通道 3/3/2 位），对平涂卡通风格影响有限。
+    void* spriteBuf = spr.createSprite(W, H);
+    Serial.printf("[ui] sprite %dx%d depth16 = %u B, %s, heap=%u\n",
+                  W, H, (unsigned)(W * H * 2),
+                  spriteBuf ? "OK" : "ALLOC FAILED",
+                  (unsigned)ESP.getFreeHeap());
+  }
+
   M5.Imu.Init();
   M5.Beep.begin();
   startBt();
@@ -962,7 +1005,6 @@ void setup() {
   buddyInit();
 
   // BLE stays always-on; s.bt is stored as a preference only.
-  spr.createSprite(W, H);
   characterInit(nullptr);  // scan /characters/ for whatever is installed
   gifAvailable = characterLoaded();
   // species NVS: 0..N-1 = ASCII species, 0xFF = use GIF (also the default,
@@ -1213,18 +1255,18 @@ void loop() {
     spr.setTextSize(1);
     if (xferActive()) {
       uint32_t done = xferProgress(), total = xferTotal();
-      spr.setCursor(8, 90);
+      spr.setCursor(8, 130);
       spr.print("installing");
-      spr.setCursor(8, 102);
+      spr.setCursor(8, 142);
       spr.printf("%luK / %luK", done/1024, total/1024);
       int barW = W - 16;
-      spr.drawRect(8, 116, barW, 8, p.textDim);
+      spr.drawRect(8, 156, barW, 8, p.textDim);
       if (total > 0) {
         int fill = (int)((uint64_t)barW * done / total);
-        if (fill > 1) spr.fillRect(9, 117, fill - 1, 6, p.body);
+        if (fill > 1) spr.fillRect(9, 157, fill - 1, 6, p.body);
       }
     } else {
-      spr.setCursor(8, 100);
+      spr.setCursor(8, 140);
       spr.print("no character loaded");
     }
   }
