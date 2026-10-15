@@ -32,7 +32,10 @@ def flash(src: Path) -> None:
     print(f"staged {name}: {total:,} bytes -> {dst}")
 
     subprocess.run(["pio", "run", "-t", "uploadfs"], cwd=PROJECT, check=True)
-    print(f"\nflashed. on the stick: hold A -> settings -> species -> GIF")
+    # 提示语按本板写：上游那句是 M5StickC Plus 的说法（长按 A、菜单项叫 species），
+    # 本板开菜单是长按 DOWN，对应的设置项是 ascii pet。
+    print(f"\n已烧录。设备上：长按 DOWN 打开菜单 → settings → ascii pet"
+          f"（在 GIF 角色包与内置 ASCII 宠物之间切换）")
 
 
 if __name__ == "__main__":

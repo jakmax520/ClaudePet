@@ -27,6 +27,12 @@ python -m esptool --chip esp32c3 --port COM4 chip_id
 `COM4` 换成你自己的端口号。Windows 上可在「设备管理器 → 端口」里看，
 或在 PlatformIO 环境下跑 `pio device list`。
 
+> **关于 esptool 的版本差异**：本文一律用**下划线**形式（`chip_id` /
+> `write_flash`），因为它在 esptool v4 和 v5 上都能跑。v5 会多打印一行
+> `Deprecated: Command 'write_flash' is deprecated. Use 'write-flash' instead.`
+> —— **忽略即可**，命令会正常执行。想消除这行警告就把下划线改成连字符；
+> 但 v4 不认识连字符形式，所以文档统一用下划线。
+
 ---
 
 ## 方式一：刷预编译镜像（推荐）
