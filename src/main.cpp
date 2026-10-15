@@ -384,6 +384,9 @@ static uint8_t paintedOrient = 0;
 static RTC_TimeTypeDef _clkTm;
 static RTC_DateTypeDef _clkDt;
 uint32_t               _clkLastRead = 0;   // zeroed by data.h on time-sync
+// 上游用它判断「是否插在充电座上」，是时钟页显示条件的一部分。本板没有 VBUS
+// 检知电路故恒为 false，且 clocking 的条件里已不再引用它 —— 保留字段是为了
+// 把与上游的差异限制在必要范围内。
 static bool            _onUsb       = false;
 static void clockRefreshRtc() {
   if (millis() - _clkLastRead < 1000) return;
@@ -393,17 +396,21 @@ static void clockRefreshRtc() {
   M5.Rtc.GetDate(&_clkDt);
 }
 
-// 【本板限制】横屏时钟暂不启用，恒用竖屏。置 1 可恢复。
+// 横屏时钟开关。
 //
-// 上游的横屏路径是按 240×135 画布写的，且宠物清除框沿用原版的
-// BUDDY_X_CENTER=67 假设（本板已改为 120）。而时钟页在上游还因 _onUsb
-// 条件恒不可达，等于从未被执行过；本项目让时钟可达后，横屏路径第一次
-// 真正运行，实测触发崩溃（Load access fault，MTVAL 为字符串内容，
-// 栈回溯落在 LittleFS 打开文件 + printf 这条链上）。
+// 这段曾被禁用：开启后实测触发 Load access fault（MTVAL 为字符串内容，
+// 栈回溯落在 LittleFS 打开文件 + printf 这条链上），当时归咎于横屏路径
+// 本身。后来查明与横屏无关 —— 根因是按键诊断打印的越界索引（见 hal.cpp
+// 的 buttonsUpdate），横屏只是改变了主循环节奏、更容易踩中那条路径。
+// 根因修复后横屏已无已知障碍，故恢复。
 //
-// 横屏是次要功能（需在设置里手动锁横屏），且难以稳定复现调试，故先关闭。
-// 恢复时除了置 1，还需按 320×240 重排 drawClock 的横屏分支与宠物清除框。
-#define ENABLE_LANDSCAPE_CLOCK 0
+// 【本板怎么进横屏】设置 → Rot 有三档 auto/port/land。本板没有 IMU
+// （HalImu 恒返回「平放朝上」），而 auto 档靠重力判断，所以 **auto 在本板
+// 恒为竖屏**，必须手动选 land。这不是缺陷，是缺该硬件的必然结果。
+//
+// 坐标已按本板重排：上游按 240×135 画布写，本板面板旋转后是 320×240，
+// 见 drawClock 前的 LSC_* 一组常量。
+#define ENABLE_LANDSCAPE_CLOCK 1
 
 static void clockUpdateOrient() {
 #if !ENABLE_LANDSCAPE_CLOCK
@@ -458,6 +465,20 @@ static const char* const MON[] = {
 static const char* const DOW[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
 
 static uint8_t clockDow() { return _clkDt.WeekDay % 7; }
+
+// 横屏布局常量。上游这套坐标按 240×135 画布写（M5StickC Plus 面板旋转后的
+// 尺寸），本板 240×320 面板旋转后是 320×240，故整体重排：宠物仍占左上，
+// 时钟文字落到右侧剩余区域的中心。
+// 竖向沿用上游观感 —— 文字块中心取屏高的约 52%（上游是 72/135）。
+static const int LSC_W       = 320;   // 横屏逻辑宽（rotation 1 与 3 都是 320×240）
+static const int LSC_H       = 240;
+static const int LSC_PET_BOX = 120;   // 宠物清除方框边长，也即左侧留给宠物的宽度
+static const int LSC_PET_CX  = LSC_PET_BOX / 2;            // 宠物中心（半尺寸渲染）
+static const int LSC_PET_CY  = LSC_PET_BOX / 2;
+static const int LSC_TXT_X   = (LSC_PET_BOX + LSC_W) / 2;  // 右侧区域中心 = 220
+static const int LSC_TXT_Y0  = 95;    // 三行文字的首行中心
+static const int LSC_TXT_DY  = 30;    // 行距
+
 static void drawClock() {
   { extern void dbgStageSet(uint32_t); dbgStageSet(63); }  // drawClock
   const Palette& p = characterPalette();
@@ -480,9 +501,10 @@ static void drawClock() {
     return;
   }
 
-  // Landscape: 240×135 direct-to-LCD. Full fill only on entry; after that
-  // text glyph bg cells repaint themselves and the pet box (small, ~90×50)
-  // gets a fillRect each pet tick — small enough not to tear.
+  // Landscape: 320×240 direct-to-LCD，只在本函数内临时切 rotation，末尾恢复 0，
+  // 精灵图的坐标系不受影响。
+  // 全屏填充仅在进入横屏时做一次；此后文字自带背景格、宠物框每帧只做小面积
+  // fillRect，撕裂范围足够小。
   M5.Lcd.setRotation(clockOrient);
   static uint8_t lastSec = 0xFF;
   bool repaint = paintedOrient != clockOrient;
@@ -495,9 +517,11 @@ static void drawClock() {
     char wdl[12]; snprintf(wdl, sizeof(wdl), "%s %s %02u", DOW[clockDow()], MON[mi], _clkDt.Date);
     char ssl[3]; snprintf(ssl, sizeof(ssl), "%02u", _clkTm.Seconds);
     M5.Lcd.setTextDatum(MC_DATUM);
-    M5.Lcd.setTextSize(3); M5.Lcd.setTextColor(p.text, p.bg);    M5.Lcd.drawString(hm, 170, 42);
-    M5.Lcd.setTextSize(2); M5.Lcd.setTextColor(p.textDim, p.bg); M5.Lcd.drawString(ssl, 170, 72);
-                                                                  M5.Lcd.drawString(wdl, 170, 102);
+    M5.Lcd.setTextSize(3); M5.Lcd.setTextColor(p.text, p.bg);
+    M5.Lcd.drawString(hm,  LSC_TXT_X, LSC_TXT_Y0);
+    M5.Lcd.setTextSize(2); M5.Lcd.setTextColor(p.textDim, p.bg);
+    M5.Lcd.drawString(ssl, LSC_TXT_X, LSC_TXT_Y0 + LSC_TXT_DY);
+    M5.Lcd.drawString(wdl, LSC_TXT_X, LSC_TXT_Y0 + LSC_TXT_DY * 2);
     M5.Lcd.setTextDatum(TL_DATUM);
     M5.Lcd.setTextSize(1);
   }
@@ -509,19 +533,18 @@ static void drawClock() {
   if (millis() - lastPetTick >= 200) {
     lastPetTick = millis();
     if (buddyMode) {
-      // ASCII glyphs don't self-clear; wipe the box each tick. Species
-      // hardcode BUDDY_X_CENTER=67 / BUDDY_Y_OVERLAY=6 for particles so
-      // keep portrait coords and just swap the surface — pet lands
-      // upper-left of landscape, which is where we want it anyway.
-      M5.Lcd.fillRect(0, 0, 115, 90, p.bg);
+      // ASCII 路径不接受坐标参数（buddyRenderTo 内部用 BUDDY_X_CENTER=120 /
+      // BUDDY_Y_BASE=70，那是 240 宽画布的值），在 320 宽的横屏里宠物会横跨
+      // 到时钟文字区。清除框因此放宽到整个左半屏以免残影 —— 轻微重叠是这个
+      // 降级态的已知代价，装了 GIF 角色包就不会走这条路径。
+      M5.Lcd.fillRect(0, 0, LSC_W / 2, LSC_H, p.bg);
       buddyRenderTo(&M5.Lcd, activeState);
     } else {
-      // Full-frame GIFs paint every pixel (transparent → pal.bg), so a
-      // per-tick clear just adds a visible black flash between wipe and
-      // last scanline. The entry fillScreen on paintedOrient change
-      // already covers the surround.
+      // 整帧 GIF 每个像素都会画（透明像素填 pal.bg），所以不必每帧清屏 ——
+      // 那会在清除与最后一条扫描线之间留下可见黑闪。进入横屏时的 fillScreen
+      // 已经覆盖了周边。
       characterSetState(activeState);
-      characterRenderTo(&M5.Lcd, 57, 45);
+      characterRenderTo(&M5.Lcd, LSC_PET_CX, LSC_PET_CY);
     }
   }
   M5.Lcd.setRotation(0);
@@ -1253,8 +1276,9 @@ void loop() {
   bool clocking = displayMode == DISP_NORMAL
                && !menuOpen && !settingsOpen && !resetOpen && !inPrompt
                && tama.sessionsRunning == 0 && tama.sessionsWaiting == 0
-  // 【诊断用】暂时去掉上游的 && _onUsb（本板无 VBUS 检知，该条件恒假，
-  // 时钟页会是死代码），配合 stage 标记定位崩溃点。
+  // 上游在这里还有一个 && _onUsb（插在充电座上才显示时钟）。本板没有 VBUS
+  // 检知电路（HalPower::GetVBusVoltage() 恒返回 0），照搬会让时钟页成为永不
+  // 可达的死代码，故去掉。这是移植的有意改动，不是临时 hack。
                && dataRtcValid();
   if (clocking) clockUpdateOrient();
   else { clockOrient = 0; orientFrames = 0; paintedOrient = 0; }
