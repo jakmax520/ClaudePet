@@ -278,6 +278,7 @@ static void drawMenuHints(const Palette& p, int mx, int mw, int hy,
 }
 
 static void drawSettings() {
+  { extern void dbgStageSet(uint32_t); dbgStageSet(60); }  // drawSettings
   const Palette& p = characterPalette();
   int mw = MENU_W, mh = MENU_TOP_PAD + SETTINGS_N * MENU_ROW_H + MENU_HINT_H;
   int mx = (W - mw) / 2, my = (H - mh) / 2;
@@ -312,6 +313,7 @@ static void drawSettings() {
 }
 
 static void drawReset() {
+  { extern void dbgStageSet(uint32_t); dbgStageSet(61); }  // drawReset
   const Palette& p = characterPalette();
   int mw = MENU_W, mh = MENU_TOP_PAD + RESET_N * MENU_ROW_H + MENU_HINT_H;
   int mx = (W - mw) / 2, my = (H - mh) / 2;
@@ -349,6 +351,7 @@ void menuConfirm() {
 }
 
 void drawMenu() {
+  { extern void dbgStageSet(uint32_t); dbgStageSet(62); }  // drawMenu
   const Palette& p = characterPalette();
   int mw = MENU_W, mh = MENU_TOP_PAD + MENU_N * MENU_ROW_H + MENU_HINT_H;
   int mx = (W - mw) / 2, my = (H - mh) / 2;
@@ -456,6 +459,7 @@ static const char* const DOW[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
 
 static uint8_t clockDow() { return _clkDt.WeekDay % 7; }
 static void drawClock() {
+  { extern void dbgStageSet(uint32_t); dbgStageSet(63); }  // drawClock
   const Palette& p = characterPalette();
   char hm[6]; snprintf(hm, sizeof(hm), "%02u:%02u", _clkTm.Hours, _clkTm.Minutes);
   char ss[4]; snprintf(ss, sizeof(ss), ":%02u", _clkTm.Seconds);
@@ -563,6 +567,7 @@ static void _infoHeader(const Palette& p, int& y, const char* section, uint8_t p
 }
 
 void drawPasskey() {
+  { extern void dbgStageSet(uint32_t); dbgStageSet(64); }  // drawPasskey
   const Palette& p = characterPalette();
   spr.fillSprite(p.bg);
   spr.setTextSize(1);
@@ -577,6 +582,7 @@ void drawPasskey() {
 }
 
 void drawInfo() {
+  { extern void dbgStageSet(uint32_t); dbgStageSet(65); }  // drawInfo
   const Palette& p = characterPalette();
   // 内容起始线。原版为 70（= 宠物缩略条高度），画布由 240 加高到 320 后
   // 随宠物区一起下移 40，与 character.cpp 的 PEEK_TOP 保持一致。
@@ -778,6 +784,7 @@ static uint8_t wrapInto(const char* in, char out[][MSG_COLS], uint8_t maxRows, u
 }
 
 static void drawApproval() {
+  { extern void dbgStageSet(uint32_t); dbgStageSet(66); }  // drawApproval
   const Palette& p = characterPalette();
   const int AREA = 78;
   spr.fillRect(0, H - AREA, W, AREA, p.bg);
@@ -836,6 +843,7 @@ static void tinyHeart(int x, int y, bool filled, uint16_t col) {
 }
 
 static void drawPetStats(const Palette& p) {
+  { extern void dbgStageSet(uint32_t); dbgStageSet(67); }  // drawPetStats
   // 内容起始线。原版为 70（= 宠物缩略条高度），画布由 240 加高到 320 后
   // 随宠物区一起下移 40，与 character.cpp 的 PEEK_TOP 保持一致。
   const int TOP = 110;
@@ -893,6 +901,7 @@ static void drawPetStats(const Palette& p) {
 }
 
 static void drawPetHowTo(const Palette& p) {
+  { extern void dbgStageSet(uint32_t); dbgStageSet(68); }  // drawPetHowTo
   // 内容起始线。原版为 70（= 宠物缩略条高度），画布由 240 加高到 320 后
   // 随宠物区一起下移 40，与 character.cpp 的 PEEK_TOP 保持一致。
   const int TOP = 110;
@@ -926,6 +935,7 @@ static void drawPetHowTo(const Palette& p) {
 }
 
 void drawPet() {
+  { extern void dbgStageSet(uint32_t); dbgStageSet(69); }  // drawPet
   const Palette& p = characterPalette();
   int y = 70;
 
@@ -947,12 +957,15 @@ void drawPet() {
 }
 
 void drawHUD() {
+  { extern void dbgStageSet(uint32_t); dbgStageSet(70); }  // drawHUD
   if (tama.promptId[0]) { drawApproval(); return; }
+  extern void dbgStageSet(uint32_t); dbgStageSet(71);
   const Palette& p = characterPalette();
   // WIDTH 是换行字符数（6px/字符），留 2 列余量给行缓冲。
   const int SHOW = 3, LH = 8, WIDTH = MSG_COLS - 2;
   const int AREA = SHOW * LH + 4;
   spr.fillRect(0, H - AREA, W, AREA, p.bg);
+  extern void dbgStageSet(uint32_t); dbgStageSet(72);
   spr.setTextSize(1);
 
   if (tama.lineGen != lastLineGen) { msgScroll = 0; lastLineGen = tama.lineGen; wake(); }
@@ -960,7 +973,9 @@ void drawHUD() {
   if (tama.nLines == 0) {
     spr.setTextColor(p.text, p.bg);
     spr.setCursor(4, H - LH - 2);
+    extern void dbgStageSet(uint32_t); dbgStageSet(73);
     spr.print(tama.msg);
+    extern void dbgStageSet(uint32_t); dbgStageSet(77);
     return;
   }
 
@@ -975,6 +990,7 @@ void drawHUD() {
     nDisp += got;
   }
 
+  extern void dbgStageSet(uint32_t); dbgStageSet(74);
   uint8_t maxBack = (nDisp > SHOW) ? (nDisp - SHOW) : 0;
   if (msgScroll > maxBack) msgScroll = maxBack;
 
@@ -986,8 +1002,10 @@ void drawHUD() {
     bool fresh = (srcOf[row] == newest) && (msgScroll == 0);
     spr.setTextColor(fresh ? p.text : p.textDim, p.bg);
     spr.setCursor(4, H - AREA + 2 + i * LH);
+    extern void dbgStageSet(uint32_t); dbgStageSet(75);
     spr.print(disp[row]);
   }
+  extern void dbgStageSet(uint32_t); dbgStageSet(76);
   if (msgScroll > 0) {
     spr.setTextColor(p.body, p.bg);
     spr.setCursor(W - 18, H - LH - 2);
@@ -1054,7 +1072,9 @@ void setup() {
       spr.drawString("a buddy appears", W/2, H/2 + 12);
     }
     spr.setTextDatum(TL_DATUM); spr.setTextSize(1);
+    { extern void dbgStageSet(uint32_t); dbgStageSet(78); }   // pushSprite 前
     spr.pushSprite(CANVAS_X, CANVAS_Y);
+    { extern void dbgStageSet(uint32_t); dbgStageSet(79); }   // pushSprite 后
     delay(1800);
   }
 
@@ -1063,11 +1083,13 @@ void setup() {
 
 void loop() {
   M5.update();
+  { extern void dbgStageSet(uint32_t); dbgStageSet(81); }   // M5.update 之后(含 heapGuard)
   M5.Beep.update();
   t++;
   uint32_t now = millis();
 
   dataPoll(&tama);
+  { extern void dbgStageSet(uint32_t); dbgStageSet(82); }   // dataPoll 之后
   if (statsPollLevelUp()) triggerOneShot(P_CELEBRATE, 3000);
   baseState = derive(tama);
 
@@ -1116,6 +1138,7 @@ void loop() {
     }
   }
 
+  { extern void dbgStageSet(uint32_t); dbgStageSet(83); }   // prompt 块之后
   bool inPrompt = tama.promptId[0] && !responseSent;
 
   // Button-press wake. Track which button woke the screen so its full
@@ -1314,7 +1337,9 @@ void loop() {
     if (resetOpen) drawReset();
     else if (settingsOpen) drawSettings();
     else if (menuOpen) drawMenu();
+    { extern void dbgStageSet(uint32_t); dbgStageSet(78); }   // pushSprite 前
     spr.pushSprite(CANVAS_X, CANVAS_Y);
+    { extern void dbgStageSet(uint32_t); dbgStageSet(79); }   // pushSprite 后
   }
 
   // Face-down nap: dim immediately, pause animations, accumulate sleep time.
@@ -1349,5 +1374,6 @@ void loop() {
     screenOff = true;
   }
 
+  { extern void dbgStageSet(uint32_t); dbgStageSet(80); }   // 循环体末尾
   delay(screenOff ? 100 : 16);
 }

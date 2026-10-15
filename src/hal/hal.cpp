@@ -135,9 +135,17 @@ static void buttonsUpdate() {
   const uint32_t ms = millis();
 
   // 诊断：档位变化时打印实测电压，便于核对分压分档是否与 bsp_pins.h 一致。
+  //
+  // ⚠ 索引必须钳位！now 的取值域是 {0=UP, 1=DOWN, 2=OK, HAL_BTN_NONE(=0xFF)}，
+  // 而 HAL_BTN_NONE 是 0xFF 这个哨兵值，直接拿去索引 4 元素数组会越界读 255 项，
+  // 把相邻内存的字节当成 char* 交给 %s 解引用 —— 表现为 Load access fault 且
+  // 故障地址是字符串内容。本项目曾因此产生一个「按 UP/DOWN 必现重启」的崩溃，
+  // 排查耗时很久：堆完整性校验查不出（是越界读、不碰堆），栈加大也无效，
+  // 且主机侧驱动数据不产生按键事件，所以只有人工按键才复现。
   if (now != s_stable) {
     static const char* const kDbgNames[4] = {"UP", "DOWN", "OK", "松开"};
-    Serial.printf("[btn] ADC=%umV -> %s\n", (unsigned)mV, kDbgNames[now]);
+    Serial.printf("[btn] ADC=%umV -> %s\n", (unsigned)mV,
+                  kDbgNames[now < 4 ? now : 3]);
   }
 
   for (uint8_t i = 0; i < 3; ++i) {
