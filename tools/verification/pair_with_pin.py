@@ -94,24 +94,27 @@ def on_pairing_requested(sender, args) -> None:
     args.accept_with_pin(pin)
 
 
-def find_device_address() -> int | None:
-    """扫描首个名字以 Claude 开头的设备，返回其蓝牙地址（整数）。"""
+async def find_device_address() -> int | None:
+    """扫描首个名字以 Claude 开头的设备，返回其蓝牙地址（整数）。
+
+    不要在这里调 asyncio.run()：本函数是被 main() 的 event loop await 的，
+    再起一个 loop 会抛 "cannot be called from a running event loop"。
+    曾经就是内嵌 async scan() + asyncio.run(scan()) 的写法，只在省略地址参数
+    时才会踩到（传地址的那条路径不经过这里）。
+    """
     try:
         from bleak import BleakScanner
     except ImportError:
         print("需要 bleak 来扫描设备：pip install bleak", flush=True)
         return None
 
-    async def scan():
-        found = await BleakScanner.discover(timeout=8.0, return_adv=True)
-        for addr, (dev, adv) in found.items():
-            name = (dev.name or adv.local_name or "")
-            if name.startswith("Claude"):
-                print(f"找到设备 {name} ({addr})", flush=True)
-                return int(addr.replace(":", ""), 16)
-        return None
-
-    return asyncio.run(scan())
+    found = await BleakScanner.discover(timeout=8.0, return_adv=True)
+    for addr, (dev, adv) in found.items():
+        name = (dev.name or adv.local_name or "")
+        if name.startswith("Claude"):
+            print(f"找到设备 {name} ({addr})", flush=True)
+            return int(addr.replace(":", ""), 16)
+    return None
 
 
 async def main() -> int:
@@ -120,7 +123,7 @@ async def main() -> int:
     if len(sys.argv) > 1:
         ADDR_INT = int(sys.argv[1].replace(":", ""), 16)
     else:
-        ADDR_INT = find_device_address()
+        ADDR_INT = await find_device_address()
     if ADDR_INT is None:
         print("未找到设备。请先唤醒设备，或把蓝牙地址作为参数传入。", flush=True)
         return 2
