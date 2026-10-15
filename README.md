@@ -107,6 +107,9 @@
 
 ## 构建与烧录
 
+> **只想把设备刷起来？** 见 **[INSTALL.md](INSTALL.md)** —— 含预编译镜像的
+> 一条命令刷机流程、配对步骤与常见问题排查。下面是源码构建的简版。
+
 需要 [PlatformIO Core](https://docs.platformio.org/en/latest/core/installation/)。
 
 ```bash
