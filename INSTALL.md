@@ -168,7 +168,11 @@ python tools/verification/buddy_check.py
 
 **时钟页出不来**
 时钟页只在「没有会话在跑」且**时间已同步过**时显示，而时间是由主机通过
-蓝牙下发的。也就是说：**没连过 Claude Desktop，就看不到时钟页**。
+蓝牙下发的。也就是说：**没连过主机，就看不到时钟页**。
+
+想在不装 Claude Desktop 的情况下验证时钟页，用仓库里的
+`tools/verification/clock_hold.py` —— 它发一次时间同步后持续喂「无会话」
+心跳，把设备按在时钟页上。
 
 ---
 
