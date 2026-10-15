@@ -353,11 +353,20 @@ void HalM5::begin() {
 //
 // 增大 CONFIG_HEAP_POISONING 能进一步抓住 use-after-free 与越界写，
 // 但那是 sdkconfig 编译期选项，本项目的 Arduino 内核是预编译好的，改不了。
+//
+// 堆余量的【周期打印】开关。默认关闭：它挂在每轮主循环上，而 Serial 走的是
+// USB-CDC —— 拔掉 USB 用电池时没有主机在读，写操作可能阻塞，把这种调用放在
+// 主循环热路径上不安全。调试内存时临时置 1。
+//
+// 注意：完整性校验【本身】不在此开关管辖内。校验失败是货真价实的故障，
+// 任何时候都该报出来，而且只在失败时打印一次，没有阻塞风险。
+#define HAL_HEAP_DEBUG 0
+
 static void heapGuard() {
-  static uint32_t nextReport = 0;
-  static bool     reported    = false;
+  static bool reported = false;
 
   if (!heap_caps_check_integrity_all(false)) {
+    // 此时堆已不可信，余量数字没有参考价值，直接连同堆信息一起打出来。
     if (!reported) {
       reported = true;
       Serial.println("[heap] !!! 完整性校验失败 —— 堆已被破坏");
@@ -369,14 +378,17 @@ static void heapGuard() {
     return;
   }
 
+#if HAL_HEAP_DEBUG
   // 每 5 秒报一次余量：最大空闲块比总空闲量更能反映碎片化程度，
   // 而碎片化正是「150KB 精灵图分配失败」那类问题的前兆。
+  static uint32_t nextReport = 0;
   if (millis() - nextReport > 5000) {
     nextReport = millis();
     Serial.printf("[heap] ok free=%u largest=%u\n",
                   (unsigned)ESP.getFreeHeap(),
                   (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
   }
+#endif
 }
 
 void HalM5::update() {
