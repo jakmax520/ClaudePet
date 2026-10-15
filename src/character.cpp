@@ -11,13 +11,26 @@ static const char* STATE_NAMES[] = {
   "sleep", "idle", "busy", "attention", "celebrate", "dizzy", "heart"
 };
 // ── 崩溃定位辅助 ──────────────────────────────────────────────────────────
-// 把"最后执行到哪一步"写进 RTC 内存：软复位（崩溃重启）后仍保留，
-// 启动时打印上一次的取值，即可定位崩溃点，无需依赖栈回溯。
-// 排查完可整体删除，不影响功能。
+// 把"最后执行到哪一步"写进 RTC 内存并打出串口标记，用于在无栈回溯的情况下
+// 定位崩溃点。**默认关闭**，见下方 DBG_STAGE_ENABLED。
+//
+// 为什么默认关：标记函数里有 Serial.flush()，那是阻塞调用，而它挂在主循环
+// 热路径上（每帧约 10 次）。开着的时候串口被刷爆、帧率被拖垮。定位期间临时
+// 置 1，定位完必须置回 0。
+//
+// 开关关闭时 dbgStageSet() 变成一次无副作用的提前返回，调用点全部保留 ——
+// 这样重新打开开关不需要再插一遍标记。
+#define DBG_STAGE_ENABLED 0
+
+// g_dbgBoot 与开关无关，始终保留：启动序号 + 复位原因是最可靠的
+// 「刚才是不是崩了」判据 —— 崩溃重启时 esp_reset_reason() 会给出
+// ESP_RST_PANIC(4)，比肉眼看屏幕可靠。
 RTC_DATA_ATTR static uint32_t g_dbgStage;
 RTC_DATA_ATTR static uint32_t g_dbgBoot;
+
+#if DBG_STAGE_ENABLED
 // 除写入 RTC 内存外，再向串口写 4 个原始字节 "[nn]"。
-// 用 Serial.write 而非 printf：printf 本身是本崩溃的嫌疑链之一（崩溃点落在
+// 用 Serial.write 而非 printf：printf 本身曾是本崩溃的嫌疑链之一（崩溃点落在
 // _svfprintf_r），用原始字节可确保标记一定能发出去，崩溃前最后一个标记
 // 就是最后执行到的那一步。
 #define DBG_STAGE(n) do {                                  \
@@ -37,6 +50,11 @@ void     dbgStageSet(uint32_t n) {
   Serial.flush();   // 强制刷出：崩溃时未发出的缓冲字节会丢失，
                     // 那样「最后一个标记」就不是真正最后执行的那一步
 }
+#else
+#define DBG_STAGE(n) ((void)0)
+uint32_t dbgStagePeek() { return 0; }
+void     dbgStageSet(uint32_t) {}
+#endif
 
 static const uint8_t N_STATES = 7;
 
@@ -170,11 +188,14 @@ static void gifDrawCb(GIFDRAW* d) {
 // --- Public -------------------------------------------------------------
 
 bool characterInit(const char* name) {
-  // g_dbgBoot 每启动一次自增：用于【验证 RTC 内存是否真的跨复位保留】。
-  // 若它不递增，说明 RTC_DATA_ATTR 没生效，那么 stage 的值也不可信。
+  // 启动序号 + 复位原因是「刚才是不是崩过」最直接的证据，比肉眼看屏幕可靠。
+  // 正常：ESP_RST_POWERON(1) / ESP_RST_EXT(2) / ESP_RST_SW(3)。
+  // 异常：ESP_RST_PANIC(4) / ESP_RST_INT_WDT(5) / ESP_RST_TASK_WDT(6)。
   g_dbgBoot++;
-  Serial.printf("[dbg] boot#%u 上次停在 stage=%u (reset_reason=%d)\n",
-                (unsigned)g_dbgBoot, (unsigned)g_dbgStage, (int)esp_reset_reason());
+  const esp_reset_reason_t rr = esp_reset_reason();
+  Serial.printf("[dbg] boot#%u reset_reason=%d%s\n", (unsigned)g_dbgBoot, (int)rr,
+                (rr == ESP_RST_PANIC || rr == ESP_RST_INT_WDT || rr == ESP_RST_TASK_WDT)
+                    ? "  <-- 上次是异常复位" : "");
   DBG_STAGE(1);
   if (!LittleFS.begin(false)) {
     // begin() fails if already mounted — that's fine on reload
