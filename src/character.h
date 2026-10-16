@@ -27,4 +27,9 @@ void characterSetPeek(bool peek);
 class TFT_eSPI;
 void characterRenderTo(TFT_eSPI* tgt, int cx, int cy);
 
+// 当前宠物图形的左边缘 x。宠物屏的标题画在宠物之上，需要按这条线限宽避让
+// （peek 模式下 GIF 缩半居中，如 96x100 的角色包占 x=96..144）。
+// 返回值随角色包尺寸变化，未加载 GIF 时不可用 —— 调用方需自行兜底。
+int characterGifLeft();
+
 const Palette& characterPalette();

@@ -331,6 +331,10 @@ void characterSetPeek(bool peek) {
   characterInvalidate();
 }
 
+// gifX 由 gifPlace() 算好，peek（缩半居中）与非 peek（全尺寸居中）都写它。
+// 未加载 GIF 时它还是初值 0，调用方要自己判断。
+int characterGifLeft() { return gifX; }
+
 void characterClose() {
   if (gifOpen) { gif.close(); gifOpen = false; }
   loaded = false;

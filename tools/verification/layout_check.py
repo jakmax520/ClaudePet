@@ -93,9 +93,9 @@ def check_pet_stats():
 def check_pet_howto():
     y = TOP + 2 + 8
     for s in ["MOOD", "approve fast = up", "deny lots = down", "FED",
-              "50K tokens = level", "ENERGY", "face-down to nap", "refills to full",
+              "50K tokens = level", "ENERGY", "drains over time",
               "idle 30s = off", "any button = wake", "DOWN: next screen",
-              "hold DOWN: menu"]:
+              "OK: next page", "hold DOWN: menu"]:
         y = emit("howto", 6, y, s)
     if y > H:
         errors.append(f"[页溢出] PET HOWTO: 结束 y={y} > {H}")
@@ -103,9 +103,14 @@ def check_pet_howto():
 
 
 def check_pet_header():
-    """PET 顶部标题：超长时先丢 owner 前缀，仍超才退回 size 1。"""
-    limit = (W - 44 - 4) // GLYPH_W      # 计数占 36px，右侧留 4px
-    out = []
+    """PET 顶部标题：按宠物图形左边缘限宽，超长先丢 owner 前缀，仍超退回 size 1。
+
+    标题画在宠物之上，越过 GIF 左边缘就压上去了。宠物屏走 peek 模式，GIF 缩半
+    居中 —— bufo 的 96x100 变成 48x50 @ x=96..144，故限宽到 x<96。
+    """
+    gif_left = 96                        # 与 main.cpp 的兜底值一致
+    limit = (gif_left - 8) // GLYPH_W
+    out = [f"  宠物左边缘 x={gif_left}，标题上限 {limit} 字符"]
     for owner, pet in [("jakmax520", "Buddy"), ("", "Buddy"),
                        ("a", "Rosie"), ("verylongownername", "Buddy")]:
         title = f"{owner}'s {pet}" if owner else pet

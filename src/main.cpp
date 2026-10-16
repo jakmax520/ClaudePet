@@ -967,12 +967,15 @@ static void drawPetHowTo(const Palette& p) {
   ln(p.textDim, "deny lots = down");
   ln(p.body,   "FED");
   ln(p.textDim, "50K tokens = level");
+  // 上游这里写的是 "face-down to nap / refills to full"，但本板没有加速度计
+  // （HalImu::getAccelData 恒返回平放朝上，isFaceDown() 要求 az < -0.7 恒不成立），
+  // 打盹永不触发，精力只降不升 —— 照抄会让人去找一个永远不会发生的动作。
   ln(p.body,   "ENERGY");
-  ln(p.textDim, "face-down to nap");
-  ln(p.textDim, "refills to full");
+  ln(p.textDim, "drains over time");
   ln(p.textDim, "idle 30s = off");
   ln(p.textDim, "any button = wake");
   ln(p.textDim, "DOWN: next screen");
+  ln(p.textDim, "OK: next page");
   ln(p.textDim, "hold DOWN: menu");
 }
 
@@ -990,10 +993,13 @@ void drawPet() {
   char title[48];
   if (ownerName()[0]) snprintf(title, sizeof(title), "%s's %s", ownerName(), petName());
   else                snprintf(title, sizeof(title), "%s", petName());
-  // 计数 "1/2" 占 36px（W-40..W-4），标题可用 4..W-44 共 192px = 16 个字符。
-  // owner 名可配置，超长时先丢掉 "owner's" 前缀只留宠物名（宠物名才是主角），
-  // 仍然放不下才退回小字 —— 优先保字号。
-  const int TITLE_MAX_CHARS = (W - 44 - 4) / 12;
+  // 标题画在宠物之上，越过宠物图形的左边缘就会压上去，故按那条线限宽。
+  // 宠物屏走 peek 模式（applyDisplayMode 里 displayMode != DISP_NORMAL 即 peek），
+  // GIF 缩半居中 —— bufo 的 96x100 变成 48x50，占 x=96..144。
+  // 放不下时先丢掉 "owner's" 前缀只留宠物名（宠物名才是主角），仍放不下才退回小字。
+  int gifLeft = characterGifLeft();
+  if (gifLeft <= 0 || gifLeft > W) gifLeft = 96;   // 未加载 GIF 时按实测值兜底
+  const int TITLE_MAX_CHARS = (gifLeft - 8) / 12;
   if ((int)strlen(title) > TITLE_MAX_CHARS && ownerName()[0])
     snprintf(title, sizeof(title), "%s", petName());
   bool bigTitle = (int)strlen(title) <= TITLE_MAX_CHARS;
