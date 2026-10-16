@@ -129,6 +129,24 @@ static void buttonsUpdate() {
     s_candidate = raw;
     s_candidateCount = 1;
   }
+  // 边沿标志是「本轮 update 内有效」的语义，**必须每轮无条件复位**。
+  //
+  // 复位原先写在下面那个 for 里，落在提前返回之后 —— 未达去抖门槛的轮次
+  // 直接 return，上一轮的 pressed/released 就留了下来，而主循环每轮都查
+  // wasPressed()，于是同一个按下沿被重复消费。
+  //
+  // 命中窗口：按下沿置位后的**下一轮**，ADC 读数跳变了一下（s_candidate 被
+  // 重置 → count 回到 1 → 提前返回）。按键刚接触时接触电阻不稳，这种跳变
+  // 很常见，所以表现为「按一次翻两页」且**偶发**。2 页的页面取模后正好回到
+  // 原页，看起来像没反应。
+  //
+  // 主机侧状态机复现（tools/verification/btn_debounce_check.py）：同一串波形
+  // 修复前一次物理按下被消费 3 次，修复后 1 次；不抖的正常波形两者都是 1 次。
+  for (uint8_t i = 0; i < 3; ++i) {
+    s_btn[i].pressed = false;
+    s_btn[i].released = false;
+  }
+
   if (s_candidateCount < 2) return;
 
   const uint8_t now = s_candidate;
@@ -151,8 +169,7 @@ static void buttonsUpdate() {
   for (uint8_t i = 0; i < 3; ++i) {
     const bool down = (now == i);
     BtnState& b = s_btn[i];
-    b.pressed = false;
-    b.released = false;
+    // 边沿标志已在函数开头统一复位，这里只负责置位。
     if (down && !b.down) {
       b.down = true;
       b.pressed = true;
