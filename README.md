@@ -183,6 +183,44 @@ TFT_eSPI 的位图字体只能整数倍缩放，没有中间档：
 做了缩句或拆行（少数修饰性细节撤下界面、只留在 MANUAL.md）。改文案时按
 19 字符/行核算，`tools/verification/layout_check.py` 会把这一步算给你看。
 
+## 中文界面
+
+界面支持中英双语，设置里的 `language` 项切换，**出厂默认英文**。
+
+**为什么是自制点阵**：TFT_eSPI 的内置字体只有 ASCII，画不了汉字；官方的矢量
+中文途径 Smooth Font 会把整个 `.vlw` 读进堆，而本板满屏精灵图之后只剩约 32KB，
+装不下任何含 CJK 的字体文件。所以只嵌入界面**实际用到**的字：195 个汉字 +
+95 个 ASCII，约 7.6KB，存 PROGMEM，零堆占用。
+
+| 文件 | 角色 |
+| --- | --- |
+| `tools/gen_cn_font.py` | 字模生成工具 + **双语文案表**（唯一来源） |
+| `src/font_cn.h` | 生成的字模、索引、文案表 —— 不手改 |
+| `src/cn_text.h/.cpp` | 渲染层 `cnDraw` / `cnDrawCenter` / `cnWidth` / `cnPrint` |
+
+**改文案**：改 `gen_cn_font.py` 顶部的 `TEXTS` 表，然后
+
+```bash
+uv run --with pillow python tools/gen_cn_font.py   # 需要系统装有 Noto Sans SC
+```
+
+界面代码只引用生成的枚举（`T_xxx`），不写字符串字面量。改了文案却忘了重跑，
+编译会因为枚举缺失而失败 —— 这是有意的，比在设备上看到空白强。汉字集合也随
+文案自动更新，少打一个字会在生成时直接报错。
+
+**排版按中英两种里较宽的那个排**：英文条目普遍更长（`> brightness` 12 字符
+= 96px vs `屏幕方向` 4 字 = 64px），按英文排即可同时容纳中文。ASCII 点阵是
+8px/字符（内置字体是 6px），所以菜单面板宽度从 150 提到 170。改文案后跑
+`tools/verification/layout_check.py` 核一遍，它会按两种语言分别算。
+
+**有一类文字永远翻不了**：主机经 BLE 下发的动态内容（会话描述、工具名、
+参数提示、owner 名）设备不知道语义，只能按英文原样显示。这是协议决定的，
+不是实现取舍。
+
+字形取自系统自带的 **Noto Sans SC**（SIL OFL 1.1）。注意它是**可变字体**，
+Pillow 的默认 instance 是 Thin，16×16 二值化后横画会断，工具里显式取了
+Regular。授权与保留字体名的声明见 `NOTICE.md` 第 6 节。
+
 ## 时钟页
 
 上游的时钟页有个前提条件：
