@@ -185,9 +185,11 @@ struct Settings {
   bool led;
   bool hud;
   uint8_t clockRot;  // 0=auto 1=portrait 2=landscape
+  uint8_t lang;      // 界面语言：0=英文 1=中文（见 cn_text.h 的 CN_EN/CN_ZH）
 };
 
-static Settings _settings = { true, true, false, true, true, 0 };
+// 出厂默认英文。中文可在设置里切（切换项本身也是双语的）。
+static Settings _settings = { true, true, false, true, true, 0, 0 };
 
 inline void settingsLoad() {
   _prefs.begin("buddy", true);
@@ -198,6 +200,8 @@ inline void settingsLoad() {
   _settings.hud      = _prefs.getBool("s_hud", true);
   _settings.clockRot = _prefs.getUChar("s_crot", 0);
   if (_settings.clockRot > 2) _settings.clockRot = 0;
+  _settings.lang = _prefs.getUChar("s_lang", 0);
+  if (_settings.lang > 1) _settings.lang = 0;
   _prefs.end();
 }
 
@@ -209,6 +213,7 @@ inline void settingsSave() {
   _prefs.putBool("s_led", _settings.led);
   _prefs.putBool("s_hud", _settings.hud);
   _prefs.putUChar("s_crot", _settings.clockRot);
+  _prefs.putUChar("s_lang", _settings.lang);
   _prefs.end();
 }
 
