@@ -54,11 +54,23 @@ static const uint8_t* findGlyph(uint32_t cp, int* w, int* h, int* rowBytes) {
   return nullptr;
 }
 
-// 把一个字展开成 16 位色的块再整体贴上去。逐像素 drawPixel 要 256 次调用，
-// 这里换成一次 pushImage —— 信息页一帧要画近 200 个字，差别很明显。
-// 静态分配（512B）避免在栈上重复开大数组。
-static uint16_t s_cell[CN_HAN_W * CN_HAN_H];
-
+// 直接逐像素 drawPixel。
+//
+// 曾用 pushImage 把整个字一次贴上去（少 255 次调用），但那条路会把 sprite 的
+// 内部状态搞坏：cnDraw 本身正常返回，随后主循环的 pushSprite 会**卡死**（不是
+// 崩溃、不重启，只是屏幕永远停在 setup 里清屏后的空背景上，表现为开机黑屏）。
+//
+// 原因在 TFT_eSPI 2.5.43 的重载签名不一致：
+//   头文件  void pushImage(..., uint16_t *data);
+//           void pushImage(..., uint16_t *data, uint16_t transparent);
+//   Sprite.cpp  void TFT_eSprite::pushImage(..., uint16_t *data, uint8_t sbpp);
+// 第 6 个参数类型对不上（uint8_t vs uint16_t），传 uint16_t* 时的重载解析落到
+// 语义未定义的路径上。drawPixel 是项目里早已大量使用的稳妥 API（乱码块、
+// 进度条、呼吸灯都用它），换过来即可。
+//
+// 代价是每个字 256 次调用。实测信息页一帧约 200 字仍够用；若将来帧率吃紧，
+// 正确做法是各自维护一个 16x16 的 uint16 缓冲后走 pushImage 的 **const** 重载
+// （那条路径没有签名歧义），而不是回到这里。
 void cnDraw(TFT_eSPI* t, int x, int y, const char* utf8, uint16_t fg, uint16_t bg) {
   if (!utf8) return;
   while (*utf8) {
@@ -71,25 +83,21 @@ void cnDraw(TFT_eSPI* t, int x, int y, const char* utf8, uint16_t fg, uint16_t b
     if (!bits) {
       // 字模里没有的字符（如主机下发 emoji）：按汉字宽度填一块背景。
       // 跳过宽度不填会让后面的字挤过来，还会留下上一帧的残影。
-      w = CN_HAN_W; h = CN_HAN_H;
-      for (int i = 0; i < w * h; i++) s_cell[i] = bg;
-      t->pushImage(x, y, w, h, s_cell);
-      x += w;
+      t->fillRect(x, y, CN_HAN_W, CN_HAN_H, bg);
+      x += CN_HAN_W;
       continue;
     }
     for (int row = 0; row < h; row++) {
-      uint16_t* dst = s_cell + row * w;
       const uint8_t* src = bits + row * rb;
       for (int bx = 0; bx < rb; bx++) {
         uint8_t b = pgm_read_byte(src + bx);
         for (int bit = 0; bit < 8; bit++) {
           int col = bx * 8 + bit;
           if (col >= w) break;
-          dst[col] = (b & (0x80 >> bit)) ? fg : bg;
+          t->drawPixel(x + col, y + row, (b & (0x80 >> bit)) ? fg : bg);
         }
       }
     }
-    t->pushImage(x, y, w, h, s_cell);
     x += w;
   }
 }
