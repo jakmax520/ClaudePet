@@ -69,6 +69,36 @@ CW2017 寄存器用法）参考了 [FoloToy/ai-passport](https://github.com/Folo
 **仅取其中的硬件事实，未沿用其代码结构**——该项目是基于 ESP-IDF 的独立实现，
 与本仓库（Arduino / PlatformIO）架构不同。
 
+## 6. 中文字模的来源与许可
+
+`src/font_cn.h` 里的点阵字模由 `tools/gen_cn_font.py` 从 **Noto Sans SC** 渲染而来，
+不是手绘的。按 SIL Open Font License 的要求在此声明：
+
+| 项 | 内容 |
+| --- | --- |
+| 字体 | Noto Sans SC（可变字体，取 Regular instance） |
+| 版权 | © 2014–2021 Adobe (<http://www.adobe.com/>), with Reserved Font Name 'Source' |
+| 许可 | **SIL Open Font License, Version 1.1** |
+| 许可全文 | <http://scripts.sil.org/OFL> |
+
+字体文件里自带的许可描述原文：
+
+> This Font Software is licensed under the SIL Open Font License, Version 1.1.
+> This Font Software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+> CONDITIONS OF ANY KIND, either express or implied.
+
+几点说明：
+
+- 本项目**未内嵌字体文件本身**，嵌入的是针对界面实际用到的 195 个字渲染出的
+  16x16 二值点阵（约 6.2KB）。字模是该字体的**衍生作品**，仍按 OFL 分发。
+- OFL 禁止衍生字体使用保留字体名，本字体的保留名是 **'Source'**
+  （Noto Sans SC 与思源黑体同源，共此声明）。本项目未在任何字体名、标识或
+  宏名中使用它。
+- 换字体只需改 `tools/gen_cn_font.py` 顶部的 `FONT_PATH` 后重跑，
+  不必改动任何界面代码 —— 若在意字体选择，可换成任意覆盖简体中文的字体。
+- 生成工具依赖系统里存在该字体文件（Windows 11 自带）。**本仓库提交了生成结果
+  `src/font_cn.h`，因此构建固件不需要该字体**，只有改文案后才需要重跑工具。
+
 ## 上游仓库
 
 - Anthropic claude-desktop-buddy：<https://github.com/anthropics/claude-desktop-buddy>
