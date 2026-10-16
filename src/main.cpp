@@ -575,18 +575,31 @@ bool checkShake() {
 
 
 
-// Persistent screen-level title row ("INFO  n/3") matching the PET header,
+// ── info / pet 界面的字号 ─────────────────────────────────────────────────
+// 位图字体只能整数倍缩放，没有 1.5 档。size 1 是 6x8px（每行 40 字符），
+// size 2 是 12x16px（每行 19 字符，行高 16）。这两个页面内容区只有
+// 210px 高（TOP=110 到 H=320），全用 size 2 时每页上限约 10 行。
+//
+// 26-10-16 起 info 与 pet 两个界面**整体**用 size 2 —— 原先只放大标题的做法
+// 在真机上看着头重脚轻、内容只占半屏。代价是每页文案必须压到 19 字符宽，
+// 放不下的句子做了缩句（语义保留），详见各页注释。
+//
+// 改字号必须同步改 y 步进，否则下方内容会重叠：size 2 的行步进是 16。
+const int TSIZE_PAGE = 2;
+
+// Persistent screen-level title row ("Info  n/N") matching the PET header,
 // then a per-page section label below it. The fixed title is the cue that
 // B cycles pages here just like it does on PET.
+// 两行都放大：只放大 section 名会让页眉和正文大小不一，反而更乱。
 static void _infoHeader(const Palette& p, int& y, const char* section, uint8_t page) {
   spr.setTextColor(p.text, p.bg);
   spr.setCursor(4, y); spr.print("Info");
   spr.setTextColor(p.textDim, p.bg);
-  spr.setCursor(W - 28, y); spr.printf("%u/%u", page + 1, INFO_PAGES);
-  y += 12;
+  spr.setCursor(W - 40, y); spr.printf("%u/%u", page + 1, INFO_PAGES);
+  y += 18;
   spr.setTextColor(p.body, p.bg);
   spr.setCursor(4, y); spr.print(section);
-  y += 12;
+  y += 16;
 }
 
 void drawPasskey() {
@@ -611,63 +624,68 @@ void drawInfo() {
   // 随宠物区一起下移 40，与 character.cpp 的 PEEK_TOP 保持一致。
   const int TOP = 110;
   spr.fillRect(0, TOP, W, H - TOP, p.bg);
-  spr.setTextSize(1);
+  spr.setTextSize(TSIZE_PAGE);
   int y = TOP + 2;
+  // 全页 size 2 后每行上限 19 字符（19 × 12px = 228px，从 x=4 排到 232）。
+  // 下面各页的文案都按这个宽度重排过。
   auto ln = [&](const char* fmt, ...) {
     char b[32]; va_list a; va_start(a, fmt); vsnprintf(b, sizeof(b), fmt, a); va_end(a);
-    spr.setCursor(4, y); spr.print(b); y += 8;
+    spr.setCursor(4, y); spr.print(b); y += 16;
   };
+  auto gap = [&]() { y += 8; };
 
   if (infoPage == 0) {
     _infoHeader(p, y, "ABOUT", infoPage);
+    // 原句 "I sleep when nothing's happening, wake when you start working..."
+    // 与 "18 species. Settings > ascii pet to cycle." 放大后逐行超宽，
+    // 此处缩句，语义未丢。
     spr.setTextColor(p.textDim, p.bg);
     ln("I watch your Claude");
     ln("desktop sessions.");
-    y += 6;
-    ln("I sleep when nothing's");
-    ln("happening, wake when");
-    ln("you start working,");
-    ln("get impatient when");
-    ln("approvals pile up.");
-    y += 6;
+    gap();
+    ln("I sleep when idle,");
+    ln("wake when you work.");
+    gap();
     spr.setTextColor(p.text, p.bg);
-    ln("Press A on a prompt");
-    ln("to approve from here.");
-    y += 6;
+    ln("Press OK to approve");
+    ln("a prompt from here.");
     spr.setTextColor(p.textDim, p.bg);
-    ln("18 species. Settings");
-    ln("> ascii pet to cycle.");
+    ln("18 species to pick");
+    ln("in settings.");
 
   } else if (infoPage == 1) {
     _infoHeader(p, y, "BUTTONS", infoPage);
     // 本板三键。原版的两键 A/B 与 Power 说明已不适用（本板无独立电源键，
     // 电源键语义由 UP 承担，见 src/hal/M5StickCPlus.h 的键位映射说明）。
+    // 键名顶格、说明缩进，靠缩进和颜色分组，不再留行间距。
     spr.setTextColor(p.text, p.bg);    ln("OK    centre");
     spr.setTextColor(p.textDim, p.bg); ln("    next page");
-    ln("    approve prompt"); y += 4;
+    ln("    approve prompt");
     spr.setTextColor(p.text, p.bg);    ln("DOWN  lower");
     spr.setTextColor(p.textDim, p.bg); ln("    next screen");
-    ln("    deny prompt"); y += 4;
+    ln("    deny prompt");
     spr.setTextColor(p.text, p.bg);    ln("UP    upper");
-    spr.setTextColor(p.textDim, p.bg); ln("    tap = screen off"); y += 4;
+    spr.setTextColor(p.textDim, p.bg); ln("    screen off");
     spr.setTextColor(p.text, p.bg);    ln("hold DOWN");
     spr.setTextColor(p.textDim, p.bg); ln("    menu");
 
   } else if (infoPage == 2) {
     _infoHeader(p, y, "CLAUDE", infoPage);
+    // 原标签各带 2 空格缩进；放大后 "  ble       encrypted" 是 21 字符会超宽，
+    // 去掉缩进正好 19。缩进原本只是视觉层次，放大后标签本身够醒目，不需要了。
     spr.setTextColor(p.textDim, p.bg);
-    ln("  sessions  %u", tama.sessionsTotal);
-    ln("  running   %u", tama.sessionsRunning);
-    ln("  waiting   %u", tama.sessionsWaiting);
-    y += 8;
+    ln("sessions  %u", tama.sessionsTotal);
+    ln("running   %u", tama.sessionsRunning);
+    ln("waiting   %u", tama.sessionsWaiting);
+    gap();
     spr.setTextColor(p.text, p.bg);
     ln("LINK");
     spr.setTextColor(p.textDim, p.bg);
-    ln("  via       %s", dataScenarioName());
-    ln("  ble       %s", !bleConnected() ? "-" : bleSecure() ? "encrypted" : "OPEN");
+    ln("via       %s", dataScenarioName());
+    ln("ble       %s", !bleConnected() ? "-" : bleSecure() ? "encrypted" : "OPEN");
     uint32_t age = (millis() - tama.lastUpdated) / 1000;
-    ln("  last msg  %lus", (unsigned long)age);
-    ln("  state     %s", stateNames[activeState]);
+    ln("last msg  %lus", (unsigned long)age);
+    ln("state     %s", stateNames[activeState]);
 
   } else if (infoPage == 3) {
     _infoHeader(p, y, "DEVICE", infoPage);
@@ -681,86 +699,83 @@ void drawInfo() {
     bool charging = usb && iBat_mA > 1;
     bool full = usb && vBat_mV > 4100 && iBat_mA < 10;
 
+    // 电量百分比仍靠亮色突出（全页同字号后无法再靠字号拉开层次）。
+    // "100%" 4 字符 × 12 = 48px，从 x=4 排到 52，状态词从 72 起不会撞。
     spr.setTextColor(p.text, p.bg);
-    spr.setTextSize(2);
     spr.setCursor(4, y);
     spr.printf("%d%%", pct);
-    spr.setTextSize(1);
     spr.setTextColor(full ? GREEN : (charging ? HOT : p.textDim), p.bg);
-    spr.setCursor(60, y + 4);
+    spr.setCursor(72, y);
     spr.print(full ? "full" : (charging ? "charging" : (usb ? "usb" : "battery")));
     y += 20;
 
     spr.setTextColor(p.textDim, p.bg);
-    ln("  battery  %d.%02dV", vBat_mV/1000, (vBat_mV%1000)/10);
-    ln("  current  %+dmA", iBat_mA);
-    if (usb) ln("  usb in   %d.%02dV", vBus_mV/1000, (vBus_mV%1000)/10);
-    y += 8;
+    ln("battery  %d.%02dV", vBat_mV/1000, (vBat_mV%1000)/10);
+    ln("current  %+dmA", iBat_mA);
+    // usb 行恒不显示：本板无 VBUS 检知，vBus_mV 恒为 0。
+    if (usb) ln("usb in   %d.%02dV", vBus_mV/1000, (vBus_mV%1000)/10);
 
     spr.setTextColor(p.text, p.bg);
     ln("SYSTEM");
     spr.setTextColor(p.textDim, p.bg);
-    if (ownerName()[0]) ln("  owner    %s", ownerName());
+    // owner 名最长 31 字符，放大后 9 + 31 远超 19 字符的行宽，截到 10。
+    if (ownerName()[0]) ln("owner    %.10s", ownerName());
     uint32_t up = millis() / 1000;
-    ln("  uptime   %luh %02lum", up / 3600, (up / 60) % 60);
-    ln("  heap     %uKB", ESP.getFreeHeap() / 1024);
-    ln("  bright   %u/4", brightLevel);
-    ln("  bt       %s", settings().bt ? (dataBtActive() ? "linked" : "on") : "off");
-    ln("  temp     %dC", (int)M5.Axp.GetTempInAXP192());
+    ln("uptime   %luh %02lum", up / 3600, (up / 60) % 60);
+    ln("heap     %uKB", ESP.getFreeHeap() / 1024);
+    ln("bright   %u/4", brightLevel);
+    ln("bt       %s", settings().bt ? (dataBtActive() ? "linked" : "on") : "off");
+    ln("temp     %dC", (int)M5.Axp.GetTempInAXP192());
 
   } else if (infoPage == 4) {
     _infoHeader(p, y, "BLUETOOTH", infoPage);
     bool linked = settings().bt && dataBtActive();
 
     spr.setTextColor(linked ? GREEN : (settings().bt ? HOT : p.textDim), p.bg);
-    spr.setTextSize(2);
     spr.setCursor(4, y);
     spr.print(linked ? "linked" : (settings().bt ? "discover" : "off"));
-    spr.setTextSize(1);
     y += 20;
 
-    spr.setTextColor(p.textDim, p.bg);
     spr.setTextColor(p.text, p.bg);
-    ln("  %s", btName);
+    ln("%s", btName);
     spr.setTextColor(p.textDim, p.bg);
     uint8_t mac[6] = {0};
     esp_read_mac(mac, ESP_MAC_BT);
-    ln("  %02X:%02X:%02X:%02X:%02X:%02X",
+    ln("%02X:%02X:%02X:%02X:%02X:%02X",
        mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
-    y += 8;
 
     if (linked) {
       uint32_t age = (millis() - tama.lastUpdated) / 1000;
-      ln("  last msg  %lus", (unsigned long)age);
+      ln("last msg  %lus", (unsigned long)age);
     } else if (settings().bt) {
       spr.setTextColor(p.text, p.bg);
       ln("TO PAIR");
       spr.setTextColor(p.textDim, p.bg);
-      ln(" Open Claude desktop");
-      ln(" > Developer");
-      ln(" > Hardware Buddy");
-      y += 4;
-      ln(" auto-connects via BLE");
+      ln("Open Claude desktop");
+      ln("> Developer");
+      ln("> Hardware Buddy");
+      // 原句 "auto-connects via BLE" 放大后 21 字符超宽，缩句。
+      ln("connects via BLE");
     }
 
   } else {
     _infoHeader(p, y, "CREDITS", infoPage);
     spr.setTextColor(p.textDim, p.bg);
     ln("made by");
-    y += 4;
     spr.setTextColor(p.text, p.bg);
     ln("Felix Rieseberg");
-    y += 12;
+    gap();
     spr.setTextColor(p.textDim, p.bg);
     ln("source");
-    y += 4;
     spr.setTextColor(p.text, p.bg);
-    ln("github.com/anthropics");
-    ln("/claude-desktop-buddy");
-    y += 12;
+    // "github.com/anthropics" 22 字符、仓库名本身 "claude-desktop-buddy"
+    // 20 字符，放大后分别是 264px / 240px，都超出 240px 屏宽，
+    // 按 owner/repo 的连字符切开，信息不变。
+    ln("anthropics/claude-");
+    ln("desktop-buddy");
+    gap();
     spr.setTextColor(p.textDim, p.bg);
     ln("hardware");
-    y += 4;
     ln("M5StickC Plus");
     ln("ESP32 + AXP192");
   }
@@ -871,47 +886,53 @@ static void drawPetStats(const Palette& p) {
   // 随宠物区一起下移 40，与 character.cpp 的 PEEK_TOP 保持一致。
   const int TOP = 110;
   spr.fillRect(0, TOP, W, H - TOP, p.bg);
-  spr.setTextSize(1);
+  spr.setTextSize(TSIZE_PAGE);
   int y = TOP + 16;
 
+  // 三个指标标签与右侧图形条同一行。标签放大到 12px/字符后 "energy" 独占
+  // 72px（x=6 排到 78），图形条必须整体让到 78 之后，否则会被压在标签底下。
+  // 标签用 y-6 让 16px 字高居中于图形中线（约 y+2）。
   spr.setTextColor(p.textDim, p.bg);
-  spr.setCursor(6, y - 2); spr.print("mood");
+  spr.setCursor(6, y - 6); spr.print("mood");
   uint8_t mood = statsMoodTier();
   uint16_t moodCol = (mood >= 3) ? RED : (mood >= 2) ? HOT : p.textDim;
-  for (int i = 0; i < 4; i++) tinyHeart(54 + i * 16, y + 2, i < mood, moodCol);
+  for (int i = 0; i < 4; i++) tinyHeart(78 + i * 16, y + 2, i < mood, moodCol);
 
   y += 20;
-  spr.setCursor(6, y - 2); spr.print("fed");
+  spr.setCursor(6, y - 6); spr.print("fed");
   uint8_t fed = statsFedProgress();
   for (int i = 0; i < 10; i++) {
-    int px = 38 + i * 9;
+    int px = 78 + i * 9;
     if (i < fed) spr.fillCircle(px, y + 1, 2, p.body);
     else spr.drawCircle(px, y + 1, 2, p.textDim);
   }
 
   y += 20;
-  spr.setCursor(6, y - 2); spr.print("energy");
+  spr.setCursor(6, y - 6); spr.print("energy");
   uint8_t en = statsEnergyTier();
   uint16_t enCol = (en >= 4) ? 0x07FF : (en >= 2) ? 0xFFE0 : HOT;
   for (int i = 0; i < 5; i++) {
-    int px = 54 + i * 13;
+    int px = 86 + i * 13;
     if (i < en) spr.fillRect(px, y - 2, 9, 6, enCol);
     else spr.drawRect(px, y - 2, 9, 6, p.textDim);
   }
 
+  // 徽章随文字一起放大：文字 "Lv NN" 需 60px + 内边距，42x14 → 72x20。
+  // 步进同步由 20 加到 24，否则下方统计行会贴到徽章底边。
   y += 24;
-  spr.fillRoundRect(6, y - 2, 42, 14, 3, p.body);
+  spr.fillRoundRect(6, y - 2, 72, 20, 4, p.body);
   spr.setTextColor(p.bg, p.body);
-  spr.setCursor(11, y + 1); spr.printf("Lv %u", stats().level);
+  spr.setCursor(12, y); spr.printf("Lv %u", stats().level);
 
-  y += 20;
+  // 统计行改 size 2 后行距由 10 加到 16（字号本身已占 16px）。
+  y += 24;
   spr.setTextColor(p.textDim, p.bg);
   spr.setCursor(6, y);
   spr.printf("approved %u", stats().approvals);
-  spr.setCursor(6, y + 10);
+  spr.setCursor(6, y + 16);
   spr.printf("denied   %u", stats().denials);
   uint32_t nap = stats().napSeconds;
-  spr.setCursor(6, y + 20);
+  spr.setCursor(6, y + 32);
   spr.printf("napped   %luh%02lum", nap/3600, (nap/60)%60);
   auto tokFmt = [&](const char* label, uint32_t v, int yPx) {
     spr.setCursor(6, yPx);
@@ -919,8 +940,8 @@ static void drawPetStats(const Palette& p) {
     else if (v >= 1000) spr.printf("%s%lu.%luK", label, v/1000, (v/100)%10);
     else                spr.printf("%s%lu", label, v);
   };
-  tokFmt("tokens   ", stats().tokens, y + 30);
-  tokFmt("today    ", tama.tokensToday, y + 40);
+  tokFmt("tokens   ", stats().tokens, y + 48);
+  tokFmt("today    ", tama.tokensToday, y + 64);
 }
 
 static void drawPetHowTo(const Palette& p) {
@@ -929,30 +950,28 @@ static void drawPetHowTo(const Palette& p) {
   // 随宠物区一起下移 40，与 character.cpp 的 PEEK_TOP 保持一致。
   const int TOP = 110;
   spr.fillRect(0, TOP, W, H - TOP, p.bg);
-  spr.setTextSize(1);
+  spr.setTextSize(TSIZE_PAGE);
   int y = TOP + 2;
+  // 全页 size 2：行步进 16。缩进全部去掉 —— 加缩进后最长的几行会到 19 字符
+  // 上限，去掉后最长的 "50K tokens = level" 只占 18 字符（x=6 排到 222）。
   auto ln = [&](uint16_t c, const char* s) {
-    spr.setTextColor(c, p.bg); spr.setCursor(6, y); spr.print(s); y += 9;
+    spr.setTextColor(c, p.bg); spr.setCursor(6, y); spr.print(s); y += 16;
   };
-  auto gap = [&]() { y += 4; };
 
-  y += 12;  // room for the PET header drawn by drawPet()
+  y += 8;  // room for the PET header drawn by drawPet()
 
-  ln(p.body,    "MOOD");
-  ln(p.textDim, " approve fast = up");
-  ln(p.textDim, " deny lots = down"); gap();
-
-  ln(p.body,    "FED");
-  ln(p.textDim, " 50K tokens =");
-  ln(p.textDim, " level up + confetti"); gap();
-
-  ln(p.body,    "ENERGY");
-  ln(p.textDim, " face-down to nap");
-  ln(p.textDim, " refills to full"); gap();
-
+  // 12 行 × 16px = 192px，从 y=120 排到 312，刚好铺满 320 的内容区，
+  // 因此不再留行间空行 —— 靠 p.body / p.textDim 的明暗差分组。
+  ln(p.body,   "MOOD");
+  ln(p.textDim, "approve fast = up");
+  ln(p.textDim, "deny lots = down");
+  ln(p.body,   "FED");
+  ln(p.textDim, "50K tokens = level");
+  ln(p.body,   "ENERGY");
+  ln(p.textDim, "face-down to nap");
+  ln(p.textDim, "refills to full");
   ln(p.textDim, "idle 30s = off");
-  ln(p.textDim, "any button = wake"); gap();
-
+  ln(p.textDim, "any button = wake");
   ln(p.textDim, "DOWN: next screen");
   ln(p.textDim, "hold DOWN: menu");
 }
@@ -965,17 +984,26 @@ void drawPet() {
   if (petPage == 0) drawPetStats(p);
   else drawPetHowTo(p);
 
-  // Header on top of whichever page drew — title left, counter right
-  spr.setTextSize(1);
+  // Header on top of whichever page drew — title left, counter right.
+  // 标题放大后占 y..y+16，落在宠物动画区（0..110）内；多占的 8px 应落在
+  // GIF 居中的底部留白里。刷机后若见压住宠物，把 y 下调或改回小字。
+  char title[48];
+  if (ownerName()[0]) snprintf(title, sizeof(title), "%s's %s", ownerName(), petName());
+  else                snprintf(title, sizeof(title), "%s", petName());
+  // 计数 "1/2" 占 36px（W-40..W-4），标题可用 4..W-44 共 192px = 16 个字符。
+  // owner 名可配置，超长时先丢掉 "owner's" 前缀只留宠物名（宠物名才是主角），
+  // 仍然放不下才退回小字 —— 优先保字号。
+  const int TITLE_MAX_CHARS = (W - 44 - 4) / 12;
+  if ((int)strlen(title) > TITLE_MAX_CHARS && ownerName()[0])
+    snprintf(title, sizeof(title), "%s", petName());
+  bool bigTitle = (int)strlen(title) <= TITLE_MAX_CHARS;
+  spr.setTextSize(bigTitle ? TSIZE_PAGE : 1);
   spr.setTextColor(p.text, p.bg);
-  spr.setCursor(4, y + 2);
-  if (ownerName()[0]) {
-    spr.printf("%s's %s", ownerName(), petName());
-  } else {
-    spr.print(petName());
-  }
+  spr.setCursor(4, y);
+  spr.print(title);
+  spr.setTextSize(TSIZE_PAGE);
   spr.setTextColor(p.textDim, p.bg);
-  spr.setCursor(W - 28, y + 2);
+  spr.setCursor(W - 40, y + (bigTitle ? 4 : 2));   // 与标题垂直居中
   spr.printf("%u/%u", petPage + 1, PET_PAGES);
 }
 
@@ -1081,18 +1109,25 @@ void setup() {
     const Palette& p = characterPalette();
     spr.fillSprite(p.bg);
     spr.setTextDatum(MC_DATUM);
-    spr.setTextSize(2);
+    // 这块只停 1.8 秒，字号要够大才读得到，主标题取 size 3（18x24px）。
+    // 但 owner / pet 名都是可配置的，居中绘制一旦超宽就两侧同时溢出，
+    // 所以按实际字宽逐级降档，取放得下的最大字号。
+    auto shout = [&](const char* s, int cy, uint16_t col, uint8_t big) {
+      uint8_t sz = big;
+      while (sz > 1 && (int)strlen(s) * 6 * sz > W - 8) sz--;
+      spr.setTextSize(sz);
+      spr.setTextColor(col, p.bg);
+      spr.drawString(s, W/2, cy);
+    };
     if (ownerName()[0]) {
       char line[40];
       snprintf(line, sizeof(line), "%s's", ownerName());
-      spr.setTextColor(p.text, p.bg);   spr.drawString(line, W/2, H/2 - 12);
-      spr.setTextColor(p.body, p.bg);   spr.drawString(petName(), W/2, H/2 + 12);
+      shout(line, H/2 - 24, p.text, 3);
+      shout(petName(), H/2 + 24, p.body, 3);
     } else {
       // First boot, no owner pushed yet — say hi.
-      spr.setTextColor(p.body, p.bg);   spr.drawString("Hello!", W/2, H/2 - 12);
-      spr.setTextSize(1);
-      spr.setTextColor(p.textDim, p.bg);
-      spr.drawString("a buddy appears", W/2, H/2 + 12);
+      shout("Hello!", H/2 - 24, p.body, 3);
+      shout("a buddy appears", H/2 + 24, p.textDim, 2);
     }
     spr.setTextDatum(TL_DATUM); spr.setTextSize(1);
     { extern void dbgStageSet(uint32_t); dbgStageSet(78); }   // pushSprite 前
