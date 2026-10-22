@@ -667,27 +667,37 @@ void drawInfo() {
   // 一行正文：x=4、行高 16（= 字模高度）。颜色改用 col 变量切换 ——
   // 绘制已全部走 cnDraw，不再有 spr.setTextColor/setCursor/print 那套状态。
   // 注意：无参数的文案里不能出现裸 '%'，它会被 vsnprintf 当成格式符。
+  // 字模本身 16 行满格，行距为 0 时上下两行会贴在一起。+1px 留缝；
+  // 设备页有 9 行正文，这是 320 高度内能加的上限（再多会溢出）。
+  const int LINE_H = 17;
   auto ln = [&](const char* fmt, ...) {
     char b[64]; va_list a; va_start(a, fmt); vsnprintf(b, sizeof(b), fmt, a); va_end(a);
-    cnDraw(&spr, 4, y, b, col, p.bg); y += 16;
+    cnDraw(&spr, 4, y, b, col, p.bg); y += LINE_H;
+  };
+  // 分组标题（LINK / 系统 / 蓝牙状态）下的字段：缩进 24px 拉开层级，
+  // 与按键页动作行一致；配对步骤再缩一级到 48px。
+  const int SUB_X = 4 + 24;
+  const int SUB2_X = 4 + 48;
+  auto sub = [&](const char* fmt, ...) {
+    char b[64]; va_list a; va_start(a, fmt); vsnprintf(b, sizeof(b), fmt, a); va_end(a);
+    cnDraw(&spr, SUB_X, y, b, col, p.bg); y += LINE_H;
+  };
+  auto sub2 = [&](const char* fmt, ...) {
+    char b[64]; va_list a; va_start(a, fmt); vsnprintf(b, sizeof(b), fmt, a); va_end(a);
+    cnDraw(&spr, SUB2_X, y, b, col, p.bg); y += LINE_H;
   };
   auto gap = [&]() { y += 8; };
 
   if (infoPage == 0) {
     _infoHeader(p, y, T_SEC_ABOUT, infoPage);
     col = p.textDim;
-    ln(cnStr(T_AB_1));
-    ln(cnStr(T_AB_2));
-    gap();
-    ln(cnStr(T_AB_3));
-    ln(cnStr(T_AB_4));
+    sub(cnStr(T_AB_1));         // 一句一行，正文缩进到标题下
+    sub(cnStr(T_AB_2));
     gap();
     col = p.text;
-    ln(cnStr(T_AB_5));
-    ln(cnStr(T_AB_6));
+    sub(cnStr(T_AB_3));
     col = p.textDim;
-    ln(cnStr(T_AB_7));
-    ln(cnStr(T_AB_8));
+    sub(cnStr(T_AB_4));
 
   } else if (infoPage == 1) {
     _infoHeader(p, y, T_SEC_BUTTONS, infoPage);
@@ -696,10 +706,8 @@ void drawInfo() {
     // 键名顶格、说明缩进，靠缩进和颜色分组。
     col = p.text;    ln(cnStr(T_BT_OK));
     col = p.textDim; ln(cnStr(T_BT_OK_1));
-    ln(cnStr(T_BT_OK_2));
     col = p.text;    ln(cnStr(T_BT_DN));
     col = p.textDim; ln(cnStr(T_BT_DN_1));
-    ln(cnStr(T_BT_DN_2));
     col = p.text;    ln(cnStr(T_BT_UP));
     col = p.textDim; ln(cnStr(T_BT_UP_1));
     col = p.text;    ln(cnStr(T_BT_HOLD));
@@ -708,18 +716,18 @@ void drawInfo() {
   } else if (infoPage == 2) {
     _infoHeader(p, y, T_SEC_CLAUDE, infoPage);
     col = p.textDim;
-    ln(cnStr(T_CL_SESS), tama.sessionsTotal);
-    ln(cnStr(T_CL_RUN), tama.sessionsRunning);
-    ln(cnStr(T_CL_WAIT), tama.sessionsWaiting);
+    sub(cnStr(T_CL_SESS), tama.sessionsTotal);
+    sub(cnStr(T_CL_RUN), tama.sessionsRunning);
+    sub(cnStr(T_CL_WAIT), tama.sessionsWaiting);
     gap();
     col = p.text;
     ln(cnStr(T_CL_LINK));
     col = p.textDim;
-    ln(cnStr(T_CL_VIA), scenarioLabel(dataScenarioName()));
-    ln(cnStr(T_CL_BLE), !bleConnected() ? "-" : cnStr(bleSecure() ? T_SC_ENC : T_SC_OPEN));
+    sub(cnStr(T_CL_VIA), scenarioLabel(dataScenarioName()));
+    sub(cnStr(T_CL_BLE), !bleConnected() ? "-" : cnStr(bleSecure() ? T_SC_ENC : T_SC_OPEN));
     uint32_t age = (millis() - tama.lastUpdated) / 1000;
-    ln(cnStr(T_CL_LAST), (unsigned long)age);
-    ln(cnStr(T_CL_STATE), cnStr(STATE_IDS[activeState]));
+    sub(cnStr(T_CL_LAST), (unsigned long)age);
+    sub(cnStr(T_CL_STATE), cnStr(STATE_IDS[activeState]));
 
   } else if (infoPage == 3) {
     _infoHeader(p, y, T_SEC_DEVICE, infoPage);
@@ -737,28 +745,29 @@ void drawInfo() {
     // "100%" 4 字符 × 8px = 32px，从 x=4 排到 36，状态词从 72 起不会撞。
     char pbuf[8];
     snprintf(pbuf, sizeof(pbuf), "%d%%", pct);
-    cnDraw(&spr, 4, y, pbuf, p.text, p.bg);
-    cnDraw(&spr, 72, y, cnStr(full ? T_DV_FULL : charging ? T_DV_CHG : usb ? T_DV_USB : T_DV_BAT),
+    cnDraw(&spr, SUB_X, y, pbuf, p.text, p.bg);
+    // 状态词相对百分比保持 68px 间距（原 4 → 72），避免与 4 位百分比相撞
+    cnDraw(&spr, SUB_X + 68, y, cnStr(full ? T_DV_FULL : charging ? T_DV_CHG : usb ? T_DV_USB : T_DV_BAT),
            full ? GREEN : (charging ? HOT : p.textDim), p.bg);
     y += 20;
 
     col = p.textDim;
-    ln(cnStr(T_DV_VBAT), vBat_mV/1000, (vBat_mV%1000)/10);
-    ln(cnStr(T_DV_CUR), iBat_mA);
+    sub(cnStr(T_DV_VBAT), vBat_mV/1000, (vBat_mV%1000)/10);
+    sub(cnStr(T_DV_CUR), iBat_mA);
     // usb 行恒不显示：本板无 VBUS 检知，vBus_mV 恒为 0。
-    if (usb) ln(cnStr(T_DV_VBUS), vBus_mV/1000, (vBus_mV%1000)/10);
+    if (usb) sub(cnStr(T_DV_VBUS), vBus_mV/1000, (vBus_mV%1000)/10);
 
     col = p.text;
     ln(cnStr(T_DV_SYS));
     col = p.textDim;
     // owner 名来自主机、长度不可控，截到 10 个字符保证不撑破行宽。
-    if (ownerName()[0]) ln(cnStr(T_DV_OWNER), ownerName());
+    if (ownerName()[0]) sub(cnStr(T_DV_OWNER), ownerName());
     uint32_t up = millis() / 1000;
-    ln(cnStr(T_DV_UP), up / 3600, (up / 60) % 60);
-    ln(cnStr(T_DV_HEAP), ESP.getFreeHeap() / 1024);
-    ln(cnStr(T_DV_BRT), brightLevel);
-    ln(cnStr(T_DV_BT), cnStr(settings().bt ? (dataBtActive() ? T_BT_LINKED : T_VAL_ON) : T_VAL_OFF));
-    ln(cnStr(T_DV_TEMP), (int)M5.Axp.GetTempInAXP192());
+    sub(cnStr(T_DV_UP), up / 3600, (up / 60) % 60);
+    sub(cnStr(T_DV_HEAP), ESP.getFreeHeap() / 1024);
+    sub(cnStr(T_DV_BRT), brightLevel);
+    sub(cnStr(T_DV_BT), cnStr(settings().bt ? (dataBtActive() ? T_BT_LINKED : T_VAL_ON) : T_VAL_OFF));
+    sub(cnStr(T_DV_TEMP), (int)M5.Axp.GetTempInAXP192());
 
   } else if (infoPage == 4) {
     _infoHeader(p, y, T_SEC_BT, infoPage);
@@ -769,24 +778,24 @@ void drawInfo() {
     y += 20;
 
     col = p.text;
-    ln("%s", btName);
+    sub("%s", btName);
     col = p.textDim;
     uint8_t mac[6] = {0};
     esp_read_mac(mac, ESP_MAC_BT);
-    ln("%02X:%02X:%02X:%02X:%02X:%02X",
-       mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+    sub("%02X:%02X:%02X:%02X:%02X:%02X",
+        mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 
     if (linked) {
       uint32_t age = (millis() - tama.lastUpdated) / 1000;
-      ln(cnStr(T_BL_LAST), (unsigned long)age);
+      sub(cnStr(T_BL_LAST), (unsigned long)age);
     } else if (settings().bt) {
       col = p.text;
-      ln(cnStr(T_BL_PAIR));
+      sub(cnStr(T_BL_PAIR));
       col = p.textDim;
-      ln(cnStr(T_BL_P1));
-      ln(cnStr(T_BL_P2));
-      ln(cnStr(T_BL_P3));
-      ln(cnStr(T_BL_P4));
+      sub2(cnStr(T_BL_P1));
+      sub2(cnStr(T_BL_P2));
+      sub2(cnStr(T_BL_P3));
+      sub2(cnStr(T_BL_P4));
     }
 
   } else {
@@ -794,22 +803,11 @@ void drawInfo() {
     col = p.textDim;
     ln(cnStr(T_CR_BY));
     col = p.text;
-    ln("Felix Rieseberg");      // 人名不译
-    gap();
-    col = p.textDim;
-    ln(cnStr(T_CR_SRC));
-    col = p.text;
-    // "github.com/anthropics" 22 字符 × 8px = 176px 放得下，但仓库名
-    // "claude-desktop-buddy" 单独 20 字符 = 160px 也放得下，此处按 owner/repo
-    // 的连字符断开，两语言下都保持同样版式。
-    ln("anthropics/claude-");
-    ln("desktop-buddy");
+    sub("Jason Liu");           // 人名不译
     gap();
     col = p.textDim;
     ln(cnStr(T_CR_HW));
-    // 上游写的是 M5StickC Plus / ESP32 + AXP192 —— 那是原版硬件，本板不是
-    ln(cnStr(T_CR_BOARD));
-    ln(cnStr(T_CR_CHIP));
+    sub(cnStr(T_CR_CHIP));
   }
 }
 
@@ -967,10 +965,13 @@ static void drawPetHowTo(const Palette& p) {
   const int TOP = 110;
   spr.fillRect(0, TOP, W, H - TOP, p.bg);
   int y = TOP + 2;
-  // 行高 16（= 字模高度）。缩进全部去掉 —— 中文条目本身已足够区分层级
-  // （标题用 p.body 亮色、说明用 p.textDim），加缩进反而挤占本就不多的行宽。
+  // 行高 16（= 字模高度）。标题（心情/饱食/精力）用 p.body 亮色顶格，
+  // 其下的说明用 p.textDim 灰色并缩进 24px，形成两级层次。
   auto ln = [&](uint16_t c, uint16_t id) {
     cnDraw(&spr, 6, y, cnStr(id), c, p.bg); y += 16;
+  };
+  auto sub = [&](uint16_t id) {
+    cnDraw(&spr, 6 + 24, y, cnStr(id), p.textDim, p.bg); y += 16;
   };
 
   y += 8;  // room for the PET header drawn by drawPet()
@@ -979,20 +980,20 @@ static void drawPetHowTo(const Palette& p) {
   // 因此不再留行间空行 —— 靠 p.body / p.textDim 的明暗差分组。
   // 若加条目需重排：内容区只剩 8px 余量（tools/verification/layout_check.py 会报）。
   ln(p.body,   T_PT_MOOD);
-  ln(p.textDim, T_PT_HOW_M);
-  ln(p.textDim, T_PT_HOW_M2);
+  sub(T_PT_HOW_M);
+  sub(T_PT_HOW_M2);
   ln(p.body,   T_PT_FED);
-  ln(p.textDim, T_PT_HOW_F);
+  sub(T_PT_HOW_F);
   ln(p.body,   T_PT_EN);
   // 上游这里写的是 "face-down to nap / refills to full"，但本板没有加速度计
   // （HalImu::getAccelData 恒返回平放朝上，isFaceDown() 要求 az < -0.7 恒不成立），
   // 打盹永不触发，精力只降不升 —— 照抄会让人去找一个永远不会发生的动作。
-  ln(p.textDim, T_PT_HOW_E);
-  ln(p.textDim, T_PT_HOW_I);
-  ln(p.textDim, T_PT_HOW_I2);
-  ln(p.textDim, T_PT_HOW_D);
-  ln(p.textDim, T_PT_HOW_O);
-  ln(p.textDim, T_PT_HOW_H);
+  sub(T_PT_HOW_E);
+  sub(T_PT_HOW_I);
+  sub(T_PT_HOW_I2);
+  sub(T_PT_HOW_D);
+  sub(T_PT_HOW_O);
+  sub(T_PT_HOW_H);
 }
 
 void drawPet() {

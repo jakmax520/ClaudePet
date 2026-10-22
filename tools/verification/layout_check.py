@@ -31,7 +31,8 @@ from gen_cn_font import TEXTS          # noqa: E402
 
 W, H = 240, 320
 TOP = 110                              # 内容起始线，见 character.cpp 的 PEEK_TOP
-LINE_H = 16
+LINE_H = 17                            # 信息页正文：16px 字模 + 1px 行距
+PET_LINE_H = 16                        # 宠物屏 HOWTO：12 行已铺满内容区
 TEXT_X = 4                             # 正文左边缘
 PANEL_PAD = 8                          # 菜单面板左右内边距
 PANEL_W = 170                          # main.cpp 的 MENU_W
@@ -61,11 +62,12 @@ def check_text(key, raw=None):
                 f"> {USABLE}px  「{s}」")
 
 
-def emit(name, y, s, step=LINE_H):
-    if px(s) > USABLE:
-        errors.append(f"[超宽] {name}: 「{s}」{px(s)}px > {USABLE}px")
+def emit(name, y, s, step=LINE_H, indent=0):
+    # indent 是子项缩进（px）；正文从 TEXT_X 起，扣掉缩进后才是这一行的可用宽度
+    if px(s) + indent > USABLE:
+        errors.append(f"[超宽] {name}: 「{s}」缩进 {indent}+{px(s)}px > {USABLE}px")
     if y + LINE_H > H:
-        errors.append(f"[溢出] {name}: y={y}+16 = {y + LINE_H} > {H}  「{s}」")
+        errors.append(f"[溢出] {name}: y={y}+{LINE_H} = {y + LINE_H} > {H}  「{s}」")
     return y + step
 
 
@@ -76,32 +78,37 @@ def t(key, lang):
 # ── 信息屏六页：每页的 (类型, 参数) 序列 ────────────────────────────────────────
 # "ln" = 一行正文；"gap" = 8px 空行；"num" = 数字占位（宽度按实际最长算）
 INFO_PAGES = {
-    "ABOUT": [("ln", "ab_1"), ("ln", "ab_2"), ("gap",), ("ln", "ab_3"), ("ln", "ab_4"),
-              ("gap",), ("ln", "ab_5"), ("ln", "ab_6"), ("ln", "ab_7"), ("ln", "ab_8")],
+    # 第三项（fmt 为第四项）是该行的子项缩进，与 main.cpp 的 SUB_X 一致
+    "ABOUT": [("ln", "ab_1", 24), ("ln", "ab_2", 24), ("gap",),
+              ("ln", "ab_3", 24), ("ln", "ab_4", 24)],
     "BUTTONS": [("ln", k) for k in
-                ("bt_ok", "bt_ok_1", "bt_ok_2", "bt_dn", "bt_dn_1", "bt_dn_2",
+                ("bt_ok", "bt_ok_1", "bt_dn", "bt_dn_1",
                  "bt_up", "bt_up_1", "bt_hold", "bt_hold_1")],
-    "CLAUDE": [("fmt", "cl_sess", "99"), ("fmt", "cl_run", "99"), ("fmt", "cl_wait", "99"),
-               ("gap",), ("ln", "cl_link"), ("fmt", "cl_via", "completed"),
-               ("fmt", "cl_ble", "encrypted"), ("fmt", "cl_last", "999999"),
-               ("fmt", "cl_state", "attention")],
-    "DEVICE": [("big100",), ("fmt", "dv_vbat", "3.91"),
-               ("fmt", "dv_cur", "-999"), ("ln", "dv_sys"),
-               ("fmt", "dv_owner", "jakmaxxxxx"), ("fmt", "dv_up", "123h 45m"),
-               ("fmt", "dv_heap", "31"), ("fmt", "dv_brt", "4"),
-               ("fmt", "dv_bt", "linked"), ("fmt", "dv_temp", "42")],
-    "BT-link": [("big", "bt_linked"), ("raw", "Claude-A1B2"),
-                ("raw", "A4:CF:12:3E:8B:01"), ("fmt", "bl_last", "999999")],
-    "BT-pair": [("big", "bl_disc"), ("raw", "Claude-A1B2"),
-                ("raw", "A4:CF:12:3E:8B:01"), ("ln", "bl_pair"), ("ln", "bl_p1"),
-                ("ln", "bl_p2"), ("ln", "bl_p3"), ("ln", "bl_p4")],
-    "CREDITS": [("ln", "cr_by"), ("raw", "Felix Rieseberg"), ("gap",),
-                ("ln", "cr_src"), ("raw", "anthropics/claude-"), ("raw", "desktop-buddy"),
-                ("gap",), ("ln", "cr_hw"), ("ln", "cr_board"), ("ln", "cr_chip")],
+    "CLAUDE": [("fmt", "cl_sess", "99", 24), ("fmt", "cl_run", "99", 24),
+               ("fmt", "cl_wait", "99", 24),
+               ("gap",), ("ln", "cl_link"), ("fmt", "cl_via", "completed", 24),
+               ("fmt", "cl_ble", "encrypted", 24), ("fmt", "cl_last", "999999", 24),
+               ("fmt", "cl_state", "attention", 24)],
+    "DEVICE": [("big100", 24), ("fmt", "dv_vbat", "3.91", 24),
+               ("fmt", "dv_cur", "-999", 24), ("ln", "dv_sys"),
+               ("fmt", "dv_owner", "jakmaxxxxx", 24), ("fmt", "dv_up", "123h 45m", 24),
+               ("fmt", "dv_heap", "31", 24), ("fmt", "dv_brt", "4", 24),
+               ("fmt", "dv_bt", "linked", 24), ("fmt", "dv_temp", "42", 24)],
+    "BT-link": [("big", "bt_linked", 24), ("raw", "Claude-A1B2", 24),
+                ("raw", "A4:CF:12:3E:8B:01", 24), ("fmt", "bl_last", "999999", 24)],
+    "BT-pair": [("big", "bl_disc", 24), ("raw", "Claude-A1B2", 24),
+                ("raw", "A4:CF:12:3E:8B:01", 24), ("ln", "bl_pair", 24),
+                ("ln", "bl_p1", 48), ("ln", "bl_p2", 48),
+                ("ln", "bl_p3", 48), ("ln", "bl_p4", 48)],
+    "CREDITS": [("ln", "cr_by"), ("raw", "Jason Liu", 24), ("gap",),
+                ("ln", "cr_hw"), ("ln", "cr_chip", 24)],
 }
 
-PET_HOWTO = ["pt_mood", "pt_how_m", "pt_how_m2", "pt_fed", "pt_how_f", "pt_en",
-             "pt_how_e", "pt_how_i", "pt_how_i2", "pt_how_d", "pt_how_o", "pt_how_h"]
+# (key, 缩进)：标题行顶格，说明行缩进一级
+PET_HOWTO = [("pt_mood", 0), ("pt_how_m", 24), ("pt_how_m2", 24),
+             ("pt_fed", 0), ("pt_how_f", 24),
+             ("pt_en", 0), ("pt_how_e", 24), ("pt_how_i", 24), ("pt_how_i2", 24),
+             ("pt_how_d", 24), ("pt_how_o", 24), ("pt_how_h", 24)]
 
 
 def check_info_page(name, seq, lang):
@@ -113,20 +120,23 @@ def check_info_page(name, seq, lang):
         if kind == "gap":
             y += 8
         elif kind == "ln":
-            y = emit(name, y, t(item[1], lang))
+            y = emit(name, y, t(item[1], lang),
+                     indent=(item[2] if len(item) > 2 else 0))
         elif kind == "fmt":
             # 用最长的实际取值代入，检查真实宽度
             s = t(item[1], lang).replace("%u", item[2]).replace("%lu", item[2])
             s = s.replace("%d", item[2]).replace("%s", item[2])
             s = s.replace("%.10s", item[2]).replace("%.02d", "00").replace("%+d", item[2])
             s = s.replace("%lu", item[2]).replace("%02lu", "45")
-            y = emit(name, y, s)
+            y = emit(name, y, s, indent=(item[3] if len(item) > 3 else 0))
         elif kind == "big":
-            y = emit(name, y, t(item[1], lang), step=20)
+            y = emit(name, y, t(item[1], lang), step=20,
+                     indent=(item[2] if len(item) > 2 else 0))
         elif kind == "big100":
-            y = emit(name, y, "100%", step=20)
+            y = emit(name, y, "100%", step=20,
+                     indent=(item[1] if len(item) > 1 else 0))
         elif kind == "raw":
-            y = emit(name, y, item[1])
+            y = emit(name, y, item[1], indent=(item[2] if len(item) > 2 else 0))
     if y > H:
         errors.append(f"[页溢出] {name} ({LANG_NAME[lang]}): 结束 y={y} > {H}（超 {y - H}px）")
     return y
@@ -134,8 +144,8 @@ def check_info_page(name, seq, lang):
 
 def main():
     print(f"画布 {W}x{H}，内容区 y={TOP}..{H}（可用 {H - TOP}px），"
-          f"汉字 16px / ASCII 8px / 行高 {LINE_H}px，正文从 x={TEXT_X} 起"
-          f"（每行 {USABLE}px）\n")
+          f"汉字 16px / ASCII 8px / 信息页行高 {LINE_H}px、宠物屏 {PET_LINE_H}px，"
+          f"正文从 x={TEXT_X} 起（每行 {USABLE}px）\n")
 
     # ── 逐条文案的宽度 ──
     print("── 全部文案宽度 ──")
@@ -192,8 +202,8 @@ def main():
     # ── 宠物屏 HOWTO：12 行从 y=120 起铺到 312 ──
     for lang in LANGS:
         y = TOP + 2 + 8
-        for key in PET_HOWTO:
-            y = emit("PET HOWTO", y, t(key, lang))
+        for key, indent in PET_HOWTO:
+            y = emit("PET HOWTO", y, t(key, lang), step=PET_LINE_H, indent=indent)
         margin = H - y
         if y > H:
             errors.append(f"[页溢出] PET HOWTO ({LANG_NAME[lang]}): 结束 y={y} > {H}")

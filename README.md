@@ -201,8 +201,12 @@ TFT_eSPI 的位图字体只能整数倍缩放，没有中间档：
 **改文案**：改 `gen_cn_font.py` 顶部的 `TEXTS` 表，然后
 
 ```bash
-uv run --with pillow python tools/gen_cn_font.py   # 需要系统装有 Noto Sans SC
+uv run --with pillow python tools/gen_cn_font.py   # 需要 Noto Sans SC + 文泉驿 12pt BDF
 ```
+
+汉字取自**文泉驿点阵宋体 12pt**（16×16 原生点阵）的 BDF，不随仓库分发；
+脚本顶部 `BDF_URL` 给出下载地址，解压后放到 `tools/fonts/wenquanyi_12pt.bdf`。
+ASCII 仍用系统自带的 Noto Sans SC 渲染。
 
 界面代码只引用生成的枚举（`T_xxx`），不写字符串字面量。改了文案却忘了重跑，
 编译会因为枚举缺失而失败 —— 这是有意的，比在设备上看到空白强。汉字集合也随
@@ -217,9 +221,11 @@ uv run --with pillow python tools/gen_cn_font.py   # 需要系统装有 Noto San
 参数提示、owner 名）设备不知道语义，只能按英文原样显示。这是协议决定的，
 不是实现取舍。
 
-字形取自系统自带的 **Noto Sans SC**（SIL OFL 1.1）。注意它是**可变字体**，
-Pillow 的默认 instance 是 Thin，16×16 二值化后横画会断，工具里显式取了
-Regular。授权与保留字体名的声明见 `NOTICE.md` 第 6 节。
+汉字字形取自 **文泉驿点阵宋体 12pt**（GPL v2 + 字体嵌入例外）：它是逐像素
+设计的 16×16 点阵，小字号下比矢量字体二值化更清晰。ASCII 用系统自带的
+**Noto Sans SC**（SIL OFL 1.1）13px 渲染 —— 16px 时 D/O/W/N 宽 10~14px，
+会超出 8px 半角字格，因此降字号并对超宽字形做水平压缩。授权声明见
+`NOTICE.md` 第 6 节。
 
 ## 时钟页
 

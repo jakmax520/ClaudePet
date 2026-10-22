@@ -71,8 +71,24 @@ CW2017 寄存器用法）参考了 [FoloToy/ai-passport](https://github.com/Folo
 
 ## 6. 中文字模的来源与许可
 
-`src/font_cn.h` 里的点阵字模由 `tools/gen_cn_font.py` 从 **Noto Sans SC** 渲染而来，
-不是手绘的。按 SIL Open Font License 的要求在此声明：
+`src/font_cn.h` 里的点阵字模由 `tools/gen_cn_font.py` 生成，不是手绘的。
+汉字与 ASCII 来自两种字体，分别声明如下。
+
+**汉字 —— 文泉驿点阵宋体 12pt（16x16 点阵）**
+
+| 项 | 内容 |
+| --- | --- |
+| 字体 | WenQuanYi Bitmap Song 12pt（`wenquanyi_12pt.bdf`） |
+| 版权 | © 2004–2010, WenQuanYi Project Board of Trustees and Qianqian Fang |
+| 许可 | **GNU GPL v2，附字体嵌入例外（font embedding exception）** |
+| 项目主页 | <https://wenq.org/> |
+| 许可全文 | <https://www.gnu.org/licenses/old-licenses/gpl-2.0.html> |
+
+该字体的嵌入例外允许把字体（及其子集）嵌入文档或软件中分发，而不会让被嵌入
+的文档/软件整体受 GPL 约束。本项目嵌入的是界面实际用到的 195 个汉字的
+16x16 点阵子集（约 6.1KB）。
+
+**ASCII —— Noto Sans SC 13px 渲染**
 
 | 项 | 内容 |
 | --- | --- |
@@ -81,23 +97,19 @@ CW2017 寄存器用法）参考了 [FoloToy/ai-passport](https://github.com/Folo
 | 许可 | **SIL Open Font License, Version 1.1** |
 | 许可全文 | <http://scripts.sil.org/OFL> |
 
-字体文件里自带的许可描述原文：
-
-> This Font Software is licensed under the SIL Open Font License, Version 1.1.
-> This Font Software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-> CONDITIONS OF ANY KIND, either express or implied.
-
 几点说明：
 
-- 本项目**未内嵌字体文件本身**，嵌入的是针对界面实际用到的 195 个字渲染出的
-  16x16 二值点阵（约 6.2KB）。字模是该字体的**衍生作品**，仍按 OFL 分发。
+- 本项目**未内嵌字体文件本身**，只嵌入点阵子集（汉字约 6.1KB + ASCII 1.5KB）。
+  字模是字体的**衍生作品**，按各自许可分发。
 - OFL 禁止衍生字体使用保留字体名，本字体的保留名是 **'Source'**
   （Noto Sans SC 与思源黑体同源，共此声明）。本项目未在任何字体名、标识或
   宏名中使用它。
-- 换字体只需改 `tools/gen_cn_font.py` 顶部的 `FONT_PATH` 后重跑，
-  不必改动任何界面代码 —— 若在意字体选择，可换成任意覆盖简体中文的字体。
-- 生成工具依赖系统里存在该字体文件（Windows 11 自带）。**本仓库提交了生成结果
-  `src/font_cn.h`，因此构建固件不需要该字体**，只有改文案后才需要重跑工具。
+- 汉字只用 BDF 中现有的字形，不做二次描摹；ASCII 由 Pillow 渲染，
+  13px 是 8px 半角字格能完整容纳大写字母的上限（见 `render_ascii`）。
+- 换汉字源只需改 `tools/gen_cn_font.py` 顶部的 `BDF_PATH` 后重跑。
+  BDF 字库不随仓库分发，从 Debian 源码包解压到该路径即可（见脚本顶部
+  `BDF_URL`）。**本仓库提交了生成结果 `src/font_cn.h`，因此构建固件不需要
+  字库文件**，只有改文案后才需要重跑工具。
 
 ## 上游仓库
 

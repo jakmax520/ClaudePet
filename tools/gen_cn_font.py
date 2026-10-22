@@ -5,9 +5,16 @@
 中文的关键。字模存 PROGMEM，零堆占用（本板满屏精灵图之后只剩约 32KB 堆，
 装不下任何完整的 CJK 字体文件）。
 
-字体：Noto Sans SC（SIL OFL 1.1，可自由再分发）。
-    注意它是**可变字体**，Pillow 的默认 instance 是 Thin —— 16x16 二值化后
-    横画会断，必须显式 set_variation_by_name("Regular")。
+字体：
+    汉字 —— 文泉驿点阵宋体 12pt（16x16 点阵，GPLv2 + 字体嵌入例外）。
+        直接取 BDF 的 BITMAP，不经过矢量字体的二值化。16px 下笔画是逐像素
+        设计好的，比 Noto 二值化清晰；BDF 的 FONT_ASCENT=14 也正好是全角
+        字身框底边，天然与 8x16 拉丁基线对齐。
+    拉丁 —— Noto Sans SC（SIL OFL 1.1）13px 渲染（见 render_ascii）。
+
+    BDF 字库不随仓库分发，从 Debian 源码包获取（见 BDF_URL），解压后放到
+    tools/fonts/wenquanyi_12pt.bdf。构建固件不需要它 —— font_cn.h 已入库，
+    只有改文案后才要重跑本工具。
 
 用法：
     python tools/gen_cn_font.py            # 生成 src/font_cn.h
@@ -21,11 +28,28 @@ import argparse
 import sys
 from pathlib import Path
 
+# 仅用于拉丁字形；汉字走下面的点阵 BDF
 FONT_PATH = "C:/Windows/Fonts/NotoSansSC-VF.ttf"
 FONT_WEIGHT = "Regular"
 THRESHOLD = 128
 HAN_W = HAN_H = 16        # 汉字 16x16 -> 每行 2 字节
 ASCII_W, ASCII_H = 8, 16  # ASCII 8x16 半宽 -> 每行 1 字节
+
+BDF_PATH = Path(__file__).resolve().parent / "fonts" / "wenquanyi_12pt.bdf"
+BDF_URL = ("https://deb.debian.org/debian/pool/main/x/xfonts-wqy/"
+           "xfonts-wqy_1.0.0~rc1.orig.tar.gz")
+BDF_ASCENT = 14           # wenquanyi_12pt.bdf 的 FONT_ASCENT
+# 拉丁基线比汉字字身框底边高 1px。16px 字号的下伸部（g/p/q/y 的尾巴）深约
+# 4.5px，而画布在基线下方只有 2px：贴着 14 放会裁掉 2.5px，表现为英文底部
+# 缺一块。抬到 13 后只裁 1.5px，混排的 1px 高差肉眼不可见。
+BASELINE_Y = BDF_ASCENT - 1
+
+# ASCII 与汉字同为 16px 字号，视觉上等高。代价是 D/O/W/N 宽 10~14px，超出
+# 8px 半角字格 —— 不能像早期那样直接裁（DOWN 会变成 DCVN），而是把超宽字形
+# 水平压缩到 8px。压缩比最大的 W/M（~0.57）笔画仍可辨；4x 超采样后缩小，
+# 避免小字号二值化断笔。
+ASCII_FONT_SIZE = 16
+OVERSAMPLE = 4
 OUT = Path(__file__).resolve().parent.parent / "src" / "font_cn.h"
 
 # ── 文案表 ───────────────────────────────────────────────────────────────────
@@ -80,27 +104,24 @@ TEXTS = [
     ("sec_bt",         "BLUETOOTH",    "蓝牙"),
     ("sec_credits",    "CREDITS",      "致谢"),
 
-    # 关于页
-    ("ab_1",  "I watch your Claude",   "我盯着你的 Claude"),
-    ("ab_2",  "desktop sessions.",     "桌面会话"),
-    ("ab_3",  "I sleep when idle,",    "闲着就睡"),
-    ("ab_4",  "wake when you work.",   "你一忙就醒"),
-    ("ab_5",  "Press OK to approve",   "按 OK 批准"),
-    ("ab_6",  "a prompt from here.",   "屏幕上的请求"),
-    ("ab_7",  "18 species to pick",    "18 种宠物"),
-    ("ab_8",  "in settings.",          "在设置里换"),
+    # 关于页：一句一行，正文缩进 24px（每行可用 212px = 26 个 ASCII / 13 个汉字）
+    ("ab_1",  "I watch your Claude work.", "我盯着你的 Claude 会话"),
+    ("ab_2",  "Sleep idle, wake on work",  "闲着就睡，你一忙就醒"),
+    ("ab_3",  "Press OK to approve.",      "按 OK 批准屏幕上的请求"),
+    ("ab_4",  "18 species in settings.",   "18 种宠物，在设置里换"),
 
-    # 按键页
+    # 按键页：一键一行键名 + 一行动作，动作不再拆成两行。
+    # 动作行统一缩进，彼此左对齐（不是各对齐到自己键名的描述文字）：
+    #   中文 3 个空格 = 24px（与「翻页」同起点）
+    #   英文 6 个空格 = 48px（与 OK/DOWN/UP 的描述文字同起点）
     ("bt_ok",    "OK    centre",       "OK 中键"),
-    ("bt_ok_1",  "    next page",      "  翻页"),
-    ("bt_ok_2",  "    approve prompt", "  批准请求"),
+    ("bt_ok_1",  "      next / approve",     "   翻页 / 批准请求"),
     ("bt_dn",    "DOWN  lower",        "DOWN 下键"),
-    ("bt_dn_1",  "    next screen",    "  切换屏幕"),
-    ("bt_dn_2",  "    deny prompt",    "  拒绝请求"),
+    ("bt_dn_1",  "      next screen / deny", "   切换屏幕 / 拒绝请求"),
     ("bt_up",    "UP    upper",        "UP 上键"),
-    ("bt_up_1",  "    screen off",     "  熄屏"),
+    ("bt_up_1",  "      screen off",         "   熄屏"),
     ("bt_hold",  "hold DOWN",          "长按 DOWN"),
-    ("bt_hold_1","    menu",           "  打开菜单"),
+    ("bt_hold_1","      menu",               "   打开菜单"),
 
     # Claude 页
     ("cl_sess",  "sessions  %u",       "会话    %u"),
@@ -143,17 +164,14 @@ TEXTS = [
     ("bl_disc",  "discover",           "可发现"),
     ("bl_last",  "last msg  %lus",     "最后消息 %lus"),
     ("bl_pair",  "TO PAIR",            "待配对"),
-    ("bl_p1",    "Open Claude desktop", "打开 Claude 桌面端"),
+    ("bl_p1",    "Open Claude desktop", "打开 Claude Desktop"),
     ("bl_p2",    "> Developer",        "> 开发者"),
     ("bl_p3",    "> Hardware Buddy",   "> 硬件 Buddy"),
     ("bl_p4",    "connects via BLE",   "通过 BLE 连接"),
 
     # 致谢页
     ("cr_by",    "made by",            "作者"),
-    ("cr_src",   "source",             "源码"),
     ("cr_hw",    "hardware",           "硬件"),
-    # 上游写的是 M5StickC Plus / ESP32 + AXP192，那是原版硬件，本板不是
-    ("cr_board", "FoloToy AI Passport", "FoloToy AI Passport"),
     ("cr_chip",  "ESP32-C3",           "ESP32-C3"),
 
     # 宠物屏
@@ -228,18 +246,98 @@ def collect_chars():
     return sorted(han), sorted(ascii_)
 
 
-def render(ch, w, h, font_cache):
+def load_bdf(path):
+    """读 BDF 点阵：{码点: (w, h, xoff, yoff, 十六进制行列表)}。
+
+    BDF 的坐标以基线为原点、y 向上；BBX 的 yoff + h 是字形顶边的字体坐标。
+    """
+    glyphs, cp, bbx, rows = {}, None, None, None
+    for raw in Path(path).read_text(encoding="latin-1").splitlines():
+        line = raw.rstrip()
+        if line.startswith("ENCODING "):
+            cp = int(line.split()[1])
+        elif line.startswith("BBX "):
+            _, w, h, xo, yo = line.split()
+            bbx = (int(w), int(h), int(xo), int(yo))
+        elif line == "BITMAP":
+            rows = []
+        elif line == "ENDCHAR":
+            if cp is not None and cp >= 0 and bbx is not None and rows is not None:
+                glyphs[cp] = (*bbx, rows)
+            cp = bbx = rows = None
+        elif rows is not None:
+            rows.append(line)
+    return glyphs
+
+
+def bdf_to_bits(cp, glyphs):
+    """把一个 BDF 字形摆进 16x16 字格，输出 1bpp 行优先、MSB 在左。
+
+    屏幕行 = FONT_ASCENT - 字体 y。汉字 BBX 16x16 yoff=-2，正好占满
+    0..15；个别全角标点更矮，落在字身框内。越界视为字库/字格不匹配，
+    宁可生成失败也不静默截断。
+    """
+    w, h, xo, yo, rows = glyphs[cp]
+    top = BDF_ASCENT - (yo + h)
+    out = bytearray(HAN_W * HAN_H // 8)
+    for j, hexrow in enumerate(rows):
+        val = int(hexrow, 16) if hexrow else 0
+        nbits = len(hexrow) * 4
+        for i in range(w):
+            if not (val & (1 << (nbits - 1 - i))):
+                continue
+            x, y = xo + i, top + j
+            if not (0 <= x < HAN_W and 0 <= y < HAN_H):
+                raise ValueError(f"U+{cp:04X} 字形越出 {HAN_W}x{HAN_H}：(x={x}, y={y})")
+            out[y * (HAN_W // 8) + x // 8] |= 0x80 >> (x % 8)
+    return bytes(out)
+
+
+def render_ascii(ch, font_cache):
+    """渲染一个 ASCII 到 8x16 字格。
+
+    基线取 BASELINE_Y。字形水平居中，超过 8px 宽的按比例压到 8px（W/M/m/@
+    等），保证右侧笔画不被裁掉。
+
+    基线下方的下伸部（g/p/q/y 的尾巴）**垂直压缩**进剩余行，而不是让它溢出
+    画布被裁：16px 行高里，满格汉字只给拉丁下伸部留了 3px，而它实际深
+    4.5px。压缩后尾巴略扁，但形状完整，不会出现「字母底部缺一块」。
+    """
     from PIL import Image, ImageDraw, ImageFont
-    key = (w, h)
+    key = ("ascii", ASCII_FONT_SIZE)
     if key not in font_cache:
-        f = ImageFont.truetype(FONT_PATH, h)
+        f = ImageFont.truetype(FONT_PATH, ASCII_FONT_SIZE * OVERSAMPLE)
         f.set_variation_by_name(FONT_WEIGHT)
         font_cache[key] = f
     f = font_cache[key]
-    img = Image.new("L", (w, h), 0)
-    # 汉字按字身框渲染；ASCII 用 left-top 对齐，半宽字形自带右侧留白
-    ImageDraw.Draw(img).text((0, 0), ch, font=f, fill=255)
-    return img
+    s = OVERSAMPLE
+    base = BASELINE_Y * s
+    big = Image.new("L", (ASCII_W * 4 * s, ASCII_H * 2 * s), 0)
+    ImageDraw.Draw(big).text((ASCII_W * s, base), ch, font=f, fill=255, anchor="ls")
+    bb = big.getbbox()
+    out = Image.new("L", (ASCII_W * s, ASCII_H * s), 0)
+
+    def place(piece, top):
+        w, h = piece.size
+        if w > ASCII_W * s:                      # 超宽字形水平压缩
+            piece = piece.resize((ASCII_W * s, h), Image.LANCZOS)
+            w, h = piece.size
+        out.paste(piece, ((ASCII_W * s - w) // 2, top))
+
+    if bb:
+        split = min(bb[3], base)
+        if split > bb[1]:                        # 基线上方：保持原比例
+            place(big.crop((bb[0], bb[1], bb[2], split)), bb[1])
+        # 基线下方：真正的下伸部（g/p/q/y，≥2px）压进剩余 3px。
+        # 1px 以内的是字形底边的抗锯齿灰边，必须丢掉 —— 若当成下伸部贴上去，
+        # 会被放大成每个字母脚下的小竖线（实测就是这种「多余残留」）。
+        if bb[3] - base >= 2 * s:
+            lower = big.crop((bb[0], base, bb[2], bb[3]))
+            avail = (ASCII_H - BASELINE_Y) * s
+            lower = lower.resize((lower.size[0], min(avail, lower.size[1])),
+                                 Image.LANCZOS)   # 只压缩，绝不放大
+            place(lower, base)
+    return out.resize((ASCII_W, ASCII_H), Image.LANCZOS)
 
 
 def to_bits(img, w, h):
@@ -258,6 +356,18 @@ def to_bits(img, w, h):
     return bytes(out)
 
 
+def ascii_descent_overflow(font_cache):
+    """ASCII 下伸部（g/p/q/y 的尾巴）超出 16px 行高的最大像素数。
+
+    满格汉字与拉丁下伸部在 16px 行内无法共存。16px 字号的下伸部约 4.5px，
+    画布只剩基线下方 2px，因此允许裁到 3px；再多说明字号与行高失配。
+    """
+    f = font_cache[("ascii", ASCII_FONT_SIZE)]   # 超采样字体，深度要换算回设计字号
+    depth = max(f.getbbox(chr(c), anchor="ls")[3]
+                for c in range(0x20, 0x7F)) / OVERSAMPLE
+    return max(0.0, depth - (ASCII_H - BASELINE_Y))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--preview", action="store_true", help="另存字模对照图")
@@ -272,18 +382,28 @@ def main():
     han, ascii_ = collect_chars()
     font_cache = {}
 
-    # ── 汉字 ──
+    # ── 汉字（BDF 原生点阵）──
+    if not BDF_PATH.exists():
+        print(f"缺少字库：{BDF_PATH}\n"
+              f"  从 {BDF_URL} 解压 wenquanyi_12pt.bdf 后放到该路径",
+              file=sys.stderr)
+        return 1
+    bdf = load_bdf(BDF_PATH)
+    absent = [c for c in han if ord(c) not in bdf]
+    if absent:
+        print(f"字库缺字（文泉驿 12pt 无此字形）：{''.join(absent)}", file=sys.stderr)
+        return 1
     han_data = bytearray()
     index = []
     for ch in han:
         index.append((ord(ch), len(han_data)))
-        han_data += to_bits(render(ch, HAN_W, HAN_H, font_cache), HAN_W, HAN_H)
+        han_data += bdf_to_bits(ord(ch), bdf)
 
     # ── ASCII（0x20..0x7E 顺序，直接下标寻址）──
     ascii_range = [chr(c) for c in range(0x20, 0x7F)]
     ascii_data = bytearray()
     for ch in ascii_range:
-        ascii_data += to_bits(render(ch, ASCII_W, ASCII_H, font_cache), ASCII_W, ASCII_H)
+        ascii_data += to_bits(render_ascii(ch, font_cache), ASCII_W, ASCII_H)
 
     index.sort()  # 按码点升序，渲染层二分查找
 
@@ -293,6 +413,13 @@ def main():
                       if c not in covered})
     if missing:
         print(f"漏字（字模未覆盖）：{''.join(missing)}", file=sys.stderr)
+        return 1
+
+    # ── 完整性检查：ASCII 下伸部不能被裁掉太多 ──
+    over = ascii_descent_overflow(font_cache)
+    if over > 3:
+        print(f"ASCII 下伸部被裁 {over}px（上限 3px）："
+              f"检查 ASCII_FONT_SIZE 与 BASELINE_Y", file=sys.stderr)
         return 1
 
     # ── 导出 ──
@@ -339,10 +466,11 @@ static const char* const CN_TEXTS[][2] = {{
 // ⚠ 本文件由 tools/gen_cn_font.py 生成，请勿手改 —— 改文案请改该工具的 TEXTS
 // 表后重跑，汉字集合会自动更新，漏字在生成时就会报错。
 //
-// 字体：Noto Sans SC（SIL OFL 1.1，可自由再分发），Regular instance。
+// 字体：汉字 — 文泉驿点阵宋体 12pt（16x16 点阵，GPLv2 + 字体嵌入例外）
+//       ASCII — Noto Sans SC（SIL OFL 1.1）13px 渲染后二值化
 // 布局：汉字 {HAN_W}x{HAN_H} 1bpp，每行 {HAN_W // 8} 字节 → {HAN_W * HAN_H // 8} 字节/字
 //       ASCII {ASCII_W}x{ASCII_H} 1bpp，半宽  → {ASCII_W * ASCII_H // 8} 字节/字符
-//       行优先、MSB 在最左。
+//       行优先、MSB 在最左；拉丁基线与汉字字身框底边同在 y={BASELINE_Y}。
 //
 // 规模：{len(index)} 个汉字（{len(han_data)} B）+ 95 个 ASCII（{len(ascii_data)} B）
 //       合计约 {(len(han_data) + len(ascii_data)) / 1024:.1f}KB，全部存 flash，零堆占用。
@@ -374,19 +502,24 @@ static const uint16_t CN_INDEX_N = {len(index)};
     print(f"  合计 {(len(han_data) + len(ascii_data)) / 1024:.1f}KB")
 
     if args.preview:
-        save_preview(han, font_cache)
+        save_preview(han, bdf)
     return 0
 
 
-def save_preview(han, font_cache, cols=24):
+def save_preview(han, bdf, cols=24):
     """把全部汉字字模拼成一张放大图，用于肉眼确认清晰度。"""
     from PIL import Image
     rows = (len(han) + cols - 1) // cols
     scale = 3
     img = Image.new("L", (cols * HAN_W * scale, rows * HAN_H * scale), 0)
     for i, ch in enumerate(han):
-        bits = render(ch, HAN_W, HAN_H, font_cache)
-        b = bits.point(lambda v: 255 if v > THRESHOLD else 0)
+        data = bdf_to_bits(ord(ch), bdf)
+        b = Image.new("L", (HAN_W, HAN_H), 0)
+        px = b.load()
+        for y in range(HAN_H):
+            for x in range(HAN_W):
+                if data[y * (HAN_W // 8) + x // 8] & (0x80 >> (x % 8)):
+                    px[x, y] = 255
         img.paste(b.resize((HAN_W * scale, HAN_H * scale), Image.NEAREST),
                   ((i % cols) * HAN_W * scale, (i // cols) * HAN_H * scale))
     path = Path("C:/Users/11761/AppData/Local/Temp/font_cn_preview.png")

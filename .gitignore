@@ -6,6 +6,9 @@
 # 由 tools/flash_character.py 从 characters/ 暂存生成，不入库
 data/
 
+# 字模生成用的原始字库（体积大；生成结果 src/font_cn.h 已入库）
+tools/fonts/*.bdf
+
 # Python
 __pycache__/
 *.py[cod]
